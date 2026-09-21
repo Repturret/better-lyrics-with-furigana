@@ -27,6 +27,14 @@ import {
   renderLoader,
   setFullscreenNoLyricsState,
 } from "@modules/ui/dom";
+import {
+  annotateFurigana,
+  annotateFuriganaFromRomaji,
+  applyLlmFurigana,
+  hasKana,
+  shouldFurigana,
+} from "@modules/lyrics/furigana";
+import { getLlmConfig, furiganaWithLlm } from "@modules/lyrics/llmTranslation";
 import { runLlmTranslationPass, type LlmTranslationLine } from "@modules/lyrics/forkTranslation";
 import { lyricsElementAdded, mainView } from "@modules/ui/mainLyricsView";
 import { disableNativeLyricsFocus } from "@modules/ui/nativeLyricsFocus";
@@ -234,11 +242,18 @@ async function processBatchTranslationsAndRomanizations(
   const translationBatch: { index: number; text: string }[] = [];
   // Every translatable line, in order: the "Best" (LLM) pass re-translates the whole song at once.
   const llmTranslationLines: LlmTranslationLine[] = [];
+  // Japanese lines get furigana instead of romaji. They still go through the romanization batch,
+  // which fills the reading cache the furigana pass then reads back (kuromoji is the fallback).
+  const furiganaLines: { index: number; lineData: LineData; text: string }[] = [];
 
   let sourceLanguage = data.language;
   // Lyrics already in the user's target language need no romanization. The setting stays on, it
   // just doesn't apply to this song.
   const isDefaultLanguage = !!sourceLanguage && langCodesMatch(targetTranslationLang, sourceLanguage);
+  // One line with kana makes the whole song Japanese even if detection said otherwise (a Japanese
+  // song with an English title often reads as "en"), so its kanji-only lines get furigana too.
+  const songIsJapanese = lyrics.some(item => !item.isInstrumental && hasKana(item.words));
+  const furiganaSourceLang = songIsJapanese ? "ja" : sourceLanguage;
   let didInjectCachedContent = false;
 
   // 1. Identify what needs to be translated/romanized
@@ -255,7 +270,18 @@ async function processBatchTranslationsAndRomanizations(
 
     // --- Romanization ---
     const isLanguageDisabledForRomanization = !!trustedLanguage && isRomanizationDisabledForLang(trustedLanguage);
-    if (isRomanizationEnabled && !isLanguageDisabledForRomanization && !isDefaultLanguage) {
+    // A Japanese song still gets furigana when its detected language is on the romanization block
+    // list: detection can be wrong, kana can't.
+    if (
+      isRomanizationEnabled &&
+      (songIsJapanese || !isLanguageDisabledForRomanization) &&
+      shouldFurigana(item.words, furiganaSourceLang)
+    ) {
+      furiganaLines.push({ index, lineData, text: item.words });
+      if (!item.romanization && !getRomanizationFromCache(item.words)) {
+        romanizationBatch.push({ index, text: item.words });
+      }
+    } else if (isRomanizationEnabled && !isLanguageDisabledForRomanization && !isDefaultLanguage) {
       let romanizedResult: string | null = null;
       let timedRomanization: LyricPart[] | null = null;
 
@@ -327,6 +353,23 @@ async function processBatchTranslationsAndRomanizations(
 
   if (isStale()) return;
 
+  // Ask the LLM for the sung readings while the batches below are in flight; the answer is swapped
+  // in over the local furigana once that is on screen.
+  const llmFuriganaRequest =
+    furiganaLines.length > 0 && AppState.isLlmFuriganaEnabled && !isTemporary
+      ? getLlmConfig()
+          .then(cfg =>
+            cfg
+              ? furiganaWithLlm(
+                  furiganaLines.map(l => l.text),
+                  cfg,
+                  signal
+                )
+              : null
+          )
+          .catch(() => null)
+      : Promise.resolve(null);
+
   // 2. Perform Batch Requests
   const promises: Promise<void>[] = [];
 
@@ -349,8 +392,9 @@ async function processBatchTranslationsAndRomanizations(
 
         if (isRomanizationDisabledForLang(sourceLanguage || "")) return;
 
+        const furiganaIndices = new Set(furiganaLines.map(f => f.index));
         response.results.forEach((result, i) => {
-          if (result) {
+          if (result && !furiganaIndices.has(romanizationBatch[i].index)) {
             const originalIndex = romanizationBatch[i].index;
             injectRomanization(doc, linesData[originalIndex].lyricElement, linesData[originalIndex], result);
             recordLyricDecoration(originalIndex, { romanization: result });
@@ -404,29 +448,53 @@ async function processBatchTranslationsAndRomanizations(
 
   await Promise.all(promises);
 
-  if (
+  // Started now so the round trip overlaps the local furigana pass below.
+  const llmTranslationTask =
     isTemporary ||
     !isTranslateEnabled ||
     AppState.translationQuality !== "best" ||
     (sourceLanguage && isTranslationDisabledForLang(sourceLanguage))
-  ) {
-    return;
+      ? Promise.resolve()
+      : runLlmTranslationPass({
+          doc,
+          lines: llmTranslationLines,
+          lyricElementAt: index => linesData[index].lyricElement,
+          targetLanguage: targetTranslationLang,
+          sourceLanguage: sourceLanguage ?? undefined,
+          isStale,
+          isSameText,
+          onTranslation: (index, text) => recordLyricDecoration(index, { translation: text }),
+          onApplied: () => {
+            lyricsElementAdded();
+            publishPictureInPictureLyrics();
+          },
+          signal,
+        });
+
+  if (furiganaLines.length > 0) {
+    for (const { lineData, text } of furiganaLines) {
+      if (isStale()) return;
+      const romaji = getRomanizationFromCache(text);
+      // With romaji: align it and cross-check against kuromoji. Without: kuromoji only. Both
+      // no-op if the line already has furigana.
+      const done = romaji ? await annotateFuriganaFromRomaji(lineData, text, romaji) : false;
+      if (!done) await annotateFurigana(lineData, text);
+    }
+    lyricsElementAdded();
   }
-  await runLlmTranslationPass({
-    doc,
-    lines: llmTranslationLines,
-    lyricElementAt: index => linesData[index].lyricElement,
-    targetLanguage: targetTranslationLang,
-    sourceLanguage: sourceLanguage ?? undefined,
-    isStale,
-    isSameText,
-    onTranslation: (index, text) => recordLyricDecoration(index, { translation: text }),
-    onApplied: () => {
-      lyricsElementAdded();
-      publishPictureInPictureLyrics();
-    },
-    signal,
-  });
+
+  // AI furigana: everything above stays as the first answer; once the LLM's sung readings arrive
+  // they quietly replace the lines they differ on.
+  const pairsByLine = await llmFuriganaRequest;
+  if (pairsByLine && !isStale()) {
+    let changed = 0;
+    furiganaLines.forEach(({ lineData, text }, i) => {
+      if (applyLlmFurigana(lineData, text, pairsByLine[i] ?? [])) changed++;
+    });
+    if (changed > 0) lyricsElementAdded();
+  }
+
+  await llmTranslationTask;
 }
 
 /**

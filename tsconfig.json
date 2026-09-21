@@ -26,7 +26,7 @@
       "@options": ["./src/options/*"]
     }
   },
-  "include": ["./", "extension-env.d.ts"],
+  "include": ["./", "extension-env.d.ts", "kuroshiro.d.ts"],
   "exclude": [
     "node_modules",
     "dist",

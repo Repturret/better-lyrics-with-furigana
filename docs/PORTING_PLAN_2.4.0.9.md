@@ -186,10 +186,11 @@ git checkout -b port/2.4.0.9 v2.4.0.9     # 이식은 새 브랜치에서
 - 구현 메모: `fork.css`는 `index.css`가 마지막에 import(PiP에도 실림). 자동 스크롤은 `styleInjector.ts`가 테마 뒤에 `blyrics-passive-scroll-bottom-pause-s = 999999` 주석을 붙이는 방식(코어 무수정). 로마자 스타일(위쪽 배치, 박스 제거)은 후리가나 레이아웃과 함께 Phase 4에서 결정. 앨범 아트 CSS는 Phase 2에서 처리됨.
 - 완료 기준: 싱크 없는 가사 전체가 밝게 보이고 자동 스크롤이 맨 아래에서 유지된다.
 
-### Phase 4 — 후리가나 (L)
+### Phase 4 — 후리가나 (L) — 코드 완료(브라우저 실측 대기)
 
-- [ ] 스파이크 A 결과대로 렌더링/레이아웃(9) → 스윕(10) 순서. 정적 표시(읽기, 위치)가 먼저 정확한 뒤 스윕을 붙인다.
-- [ ] 후리가나 순수 로직은 이전 그대로: `alignKanjiRuns`, `mergeRuns`, `applyOverrides`, 병합 규칙.
+- [x] 스파이크 A 결과대로 렌더링/레이아웃(9) → 스윕(10) 순서. 정적 표시(읽기, 위치)가 먼저 정확한 뒤 스윕을 붙인다.
+- [x] 후리가나 순수 로직은 이전 그대로: `alignKanjiRuns`, `mergeRuns`, `applyOverrides`, 병합 규칙.
+- 구현 메모: `furigana.ts`(순수 로직+kuromoji, UtaTen 오버라이드 제거)와 `furiganaDom.ts`(세계 무관 DOM/스윕)로 분리. 단어 요소는 `LineData.parts[].lyricElement`(`data-content`)에서 얻고, 글자 위치는 TreeWalker+Range라 글자 모드에서도 동작. 스윕은 `part.animations`의 스윕 애니메이션(keyframe/timing)을 후리가나 하이라이트에 복제(길이·시작 오프셋 안분)하고 rAF로 currentTime/재생상태를 미러링. 글자 모드는 단순 그라디언트로 근사, 줄 싱크 단어는 fade 미러. 로마자 위치/박스 스타일은 업스트림 그대로 유지. 남은 위험: 로마자 배치 요청 캐시 의존, 재레이아웃(창 크기 변경) 시 후리가나 위치 재계산 없음(기존과 동일).
 - 완료 기준: 6절의 후리가나 회귀 케이스 통과, 배경 보컬/오른쪽 정렬/글자 단위 싱크 곡에서 위치가 맞고 스윕이 단어와 같이 진행된다.
 
 ### Phase 5 — 시크/복사 (L)
