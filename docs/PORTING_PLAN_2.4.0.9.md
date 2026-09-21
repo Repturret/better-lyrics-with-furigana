@@ -150,7 +150,7 @@ git checkout -b port/2.4.0.9 v2.4.0.9     # 이식은 새 브랜치에서
   - Firefox 빌드: `addons.mozilla.org requires browser_specific_settings.gecko.data_collection_permissions for new add-ons` (manifest).
   - `npm ci`: esbuild postinstall 스크립트가 `allowScripts`에 등록되지 않았다는 안내.
 
-### Phase 1 — 스파이크 (M, 코드 변경 없음, 결과는 이 문서에 기록)
+### Phase 1 — 스파이크 (M, 코드 변경 없음, 결과는 이 문서에 기록) — 완료
 
 - **A. 단어 활성화 훅**: 코어 엔진이 단어 활성화/비활성화를 어떻게 알리는가. 후리가나 스윕 구현안 결정.
 - **B. 줄 구조와 시크**: `blyrics--line` 직속 자식 구성, `::before` 바 플렉스 아이템이 새 구조에서 성립하는가, `addSeekHandler`가 언제 리스너를 붙이는가(`allZero` 처리 포함), 캡처 리스너로 가로챌 수 있는가.
@@ -158,6 +158,20 @@ git checkout -b port/2.4.0.9 v2.4.0.9     # 이식은 새 브랜치에서
 - **D. `decorations` 맵과 `injectTranslation`/`injectRomanization`의 DOM**: 번역 행 요소 구조, 교체 시 처리, `lyricDecorations`와의 관계.
 - **E. PiP** (지원 확정): (1) `applyDecorations()`에 우리 훅을 걸 위치와 방법, 기존 번역 요소를 교체할 수 있는지, (2) `bridge.ts` 페이로드와 `LyricLineDecoration` 확장 방법, 두 월드의 직렬화 제약, (3) `fork.css`를 PiP에 싣는 경로(`stylesheetUrls()`/`injectStylesheet`), (4) PiP의 스크롤/틱에서 passive scroll을 어떻게 다루는가, (5) Firefox 페이지 월드에서 우리 세계 무관 모듈을 번들하는 방법(`src/pageWorld.ts`).
 - **F. 업스트림 옵션 화면 변경점**: `options.ts`/`options.html`의 Language/Display 탭 구성, 저장/복원 규약이 그대로인지.
+
+**스파이크 결과 (조사 완료)**
+
+- **A. 후리가나 스윕: 오버레이로 가능.** `PartData.animations`가 공개돼 있다. 자체 rAF 루프로 `isAnimating`인 줄을 훑고, 스윕 애니메이션의 `KeyframeEffect.getKeyframes()`를 복사해 후리가나 하이라이트 요소(자체 클래스, `.blyrics--word` 아님)에 우리 WAAPI 애니메이션을 만든다(`delay`=오프셋, `duration`=런 길이). `currentTime`은 단어 애니메이션에서 가져오고 pause/play를 미러링한다. `WeakMap<Animation, …>`로 추적. 글자 모드(`highlightLetterElements`)는 단순 그라디언트로 근사. 메인/PiP 문서 양쪽에서 동작해야 한다.
+- **B. 줄 구조/시크:** 줄은 `lyricElement` → `.blyrics-line-main`(bidi-run, highlight-run) + 선택적 `.blyrics-background-line`. 코어 줄 CSS(`.blyrics-container > div`)에 `cursor: pointer`, `transform: scale`. `addSeekHandler`는 줄 요소에 click 리스너를 붙이므로(`allZero`면 `cursor: unset`), 여백(gutter)만 시크하려면 컨테이너에 캡처 단계 리스너를 걸어 이벤트를 막아야 한다. `::before` 바 플렉스 트릭은 새 block/main 레이아웃에서 재확인 필요. 더블클릭 시크는 `lyrics.ts`의 `seekPlayer` 또는 호스트 `seek` 사용.
+- **C. 테마 설정:** `styleInjector.ts`의 `applyCustomStyles`가 `mainView.setTheme(withLetterWaveSetting(css))`를 호출하고 `/* blyrics-letter-wave = ...; */` 주석을 덧붙인다(마지막 값이 우선). 이 래퍼를 확장해 `/* blyrics-passive-scroll-bottom-pause-s = 999999; */`를 넣으면 패치·래핑 없이 자동 스크롤을 조절할 수 있다. PiP도 적용된 테마(`#blyrics-custom-style` textContent)를 `renderer.setTheme`으로 다시 읽으므로 양쪽에 적용될 것. 대안: `passiveScrollEnabled: false` + 자체 스크롤 루프.
+- **D. 번역/데코레이션:** `injectTranslation`은 `.blyrics--translated`가 이미 있으면 no-op이므로 `upsertTranslation`은 기존 요소의 텍스트를 직접 수정해야 한다. `LineData.decorations`는 romanized/translated 요소의 슬라이드 애니메이션용일 뿐이다. 후리가나는 decorator가 아니므로 부착 후 `lyricsElementAdded()`로 relayout을 호출한다.
+- **E. PiP:**
+  - `pipHost.ts`는 페이로드의 줄이 같으면(`hasSameLines`) 재빌드 없이 `applyDecorations()` + `measureLyrics()`만 호출한다. 번역 교체/후리가나 부착은 여기에 얇은 훅이 필요하다.
+  - 후리가나 데이터는 `LyricLineDecoration`과 `bridge.ts` 페이로드에 추가하고, 부착 코드는 `doc`를 받는 순수 DOM 함수로 작성한다.
+  - `fork.css`는 `public/css/blyrics/index.css`에 `@import url("fork.css");`를 추가해 싣는다(PiP는 `LYRIC_STYLESHEET_PATH = css/blyrics/index.css` 단일 URL 사용, `extension.config.js`는 평탄화 시 파일명 충돌이면 실패).
+  - 페이로드에 `passiveScrollEnabled`가 있다. Firefox 페이지 월드 번들은 `src/pageWorld.ts`가 `mainWorldHost`를 import한다. 우리 모듈은 `chrome.*`를 쓰지 않는 세계 무관 파일로 두면 그 번들에 들어간다.
+  - 구현 단계(Phase 6)에서 재확인: PiP의 `tickLyrics()` 위치, 페이지 월드 번들에 fork 모듈이 실제로 포함되는지.
+- **F. 옵션 화면:** 저장/복원 규약(`saveOptions`, `getOptionsFromForm`, `restoreOptions`의 `defaultOptions`/`readKeys`, `setOptionsInForm`, `#options input, #options select` 자동 연결) 동일. 탭은 `display-content`, `language-content`(`isRomanizationEnabled`, `translate`), `sources-content`, `themes-content`, `identity-content`. 추가할 키: `translationQuality`, `llmProvider`, `llmModel`, `llmCustomPrompt`, `isLlmFuriganaEnabled`, `isLlmRevisionEnabled`, `albumArtSize`(`furiganaSource` 제외). 옵션 UI는 JS로 생성해 upstream html 수정을 최소화한다.
 
 ### Phase 2 — 비렌더링 기능 (M)
 
