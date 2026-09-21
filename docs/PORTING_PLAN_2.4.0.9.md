@@ -136,11 +136,19 @@ git checkout -b port/2.4.0.9 v2.4.0.9     # 이식은 새 브랜치에서
 
 각 단계의 공통 기준: `npm run typecheck`, `npm run build`(chrome/firefox/edge), `npm run knip`, 관련 자체 점검 통과, 체크리스트 수동 확인.
 
-### Phase 0 — 준비 (S)
+### Phase 0 — 준비 (S) — 완료
 
-- [ ] `my-changes`는 수정하지 않는다(확정 결정 4). `translation.ts`의 NUL 구분자는 이식 브랜치로 가져올 때 일반 구분자로 바꾼다.
-- [ ] `git tag fork-v2.3.3 my-changes`, `git checkout -b port/2.4.0.9 v2.4.0.9`.
-- [ ] `npm ci`로 v2.4.0.9가 빌드되는 상태를 먼저 확인(기준선).
+- [x] `my-changes`는 수정하지 않는다(확정 결정 4). `translation.ts`의 NUL 구분자는 이식 브랜치로 가져올 때(Phase 2) 일반 구분자로 바꾼다.
+- [x] `git tag fork-v2.3.3 my-changes`(기존 작업 스냅샷, 로컬 태그), `git checkout -b port/2.4.0.9 v2.4.0.9`. 문서 커밋 두 개는 이 브랜치로 cherry-pick했다.
+- [x] 기준선 확인: 업스트림 `v2.4.0.9` 그대로 `npm ci` → `npm run typecheck` → `npm run build`(chrome/firefox/edge)가 통과한다.
+
+**기준선 기록** (이식 중 새로 생긴 문제와 구분하기 위함)
+- 환경: node v24.18.0, npm 11.18.0. `npm ci`는 약 12초.
+- `typecheck` 종료 코드 0. `generate:locales`가 만드는 `src/core/generated/locales.ts`는 git이 추적하지 않는다(작업 트리가 깨끗하게 유지됨).
+- 빌드 산출물: `dist/chrome`, `dist/firefox`, `dist/edge`(모두 버전 2.4.0.9).
+- 원래 있는 경고(우리 변경과 무관):
+  - Firefox 빌드: `addons.mozilla.org requires browser_specific_settings.gecko.data_collection_permissions for new add-ons` (manifest).
+  - `npm ci`: esbuild postinstall 스크립트가 `allowScripts`에 등록되지 않았다는 안내.
 
 ### Phase 1 — 스파이크 (M, 코드 변경 없음, 결과는 이 문서에 기록)
 
