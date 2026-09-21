@@ -58,6 +58,19 @@ module.exports = {
         },
       });
     }
+    // kuromoji (pulled in by kuroshiro-analyzer-kuromoji for furigana) is a
+    // Node-oriented package. It only needs `path.join` in the browser; `fs` and
+    // `zlib` live in the Node-only dictionary loader that the package's own
+    // `browser` field swaps out, so we can stub them.
+    const path = require("node:path");
+    config.resolve = config.resolve || {};
+    config.resolve.fallback = {
+      ...(config.resolve.fallback || {}),
+      path: path.resolve(__dirname, "tooling/path-shim.cjs"),
+      fs: false,
+      zlib: false,
+    };
+
     config.devtool = (isDevelopment || isCanaryRelease) ? "source-map" : false;
     config.output = {
       ...config.output,
