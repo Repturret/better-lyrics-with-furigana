@@ -145,6 +145,17 @@ const config = {
       });
     }
 
+    // kuromoji (pulled in by kuroshiro-analyzer-kuromoji for furigana) is a Node-oriented package. It
+    // only needs `path.join` in the browser; `fs` and `zlib` live in the Node-only dictionary loader
+    // that the package's own `browser` field swaps out, so they can be stubbed.
+    rspackConfig.resolve = rspackConfig.resolve || {};
+    rspackConfig.resolve.fallback = {
+      ...(rspackConfig.resolve.fallback || {}),
+      path: join(projectRoot, "tooling", "path-shim.cjs"),
+      fs: false,
+      zlib: false,
+    };
+
     rspackConfig.devtool = shouldBuildSourcemaps ? "source-map" : false;
     return rspackConfig;
   },

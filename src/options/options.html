@@ -143,6 +143,13 @@
 						</label>
 					</div>
 					<div class="container">
+						<span>Album art size</span>
+						<div class="blyrics-slider-row">
+							<input type="range" id="albumArtSize" class="blyrics-slider" min="300" max="1400" step="10">
+							<span id="albumArtSize-value" class="blyrics-slider-value">800px</span>
+						</div>
+					</div>
+					<div class="container">
 						<span>__MSG_options_display_stylizedAnimations__</span>
 						<label>
 							<input type="checkbox" id="isStylizedAnimationsEnabled">
@@ -367,6 +374,58 @@
 								<option value="yo">Yoruba</option>
 								<option value="zu">Zulu</option>
 							</select>
+						</div>
+					</div>
+					<div class="container">
+						<span>Translation quality</span>
+						<div class="select">
+							<select id="translationQuality">
+								<option value="fast">Fast (Google)</option>
+								<option value="best">Best (AI, needs API key)</option>
+							</select>
+						</div>
+					</div>
+					<div id="llmConfig" hidden>
+						<div class="container">
+							<span>AI provider</span>
+							<div class="select">
+								<select id="llmProvider">
+									<option value="openai">OpenAI</option>
+									<option value="anthropic">Anthropic (Claude)</option>
+									<option value="gemini">Google Gemini</option>
+								</select>
+							</div>
+						</div>
+						<div class="container">
+							<span>API key (stored locally, never synced)</span>
+							<input type="password" id="llmApiKey" autocomplete="off" spellcheck="false" placeholder="sk-..." />
+						</div>
+						<div class="container">
+							<span>Model (optional)</span>
+							<input type="text" id="llmModel" autocomplete="off" spellcheck="false" placeholder="default per provider" />
+						</div>
+						<div class="container">
+							<span>Second AI pass: rewrite as spoken style</span>
+							<label>
+								<input type="checkbox" id="isLlmRevisionEnabled">
+								<span class="checkmark"></span>
+							</label>
+						</div>
+						<div class="container">
+							<span>AI furigana (swapped in when ready)</span>
+							<label>
+								<input type="checkbox" id="isLlmFuriganaEnabled">
+								<span class="checkmark"></span>
+							</label>
+						</div>
+						<div class="container llm-prompt-container">
+							<span>Translation prompt (extra instructions)</span>
+							<textarea id="llmCustomPrompt" rows="4" maxlength="2000" spellcheck="false" placeholder="e.g. Use casual speech. Keep slang and swearing natural."></textarea>
+							<div class="llm-prompt-actions">
+								<span id="llmPromptStatus" class="llm-prompt-status"></span>
+								<button type="button" class="small-btn" id="llmPromptReset">Reset</button>
+								<button type="button" class="small-btn" id="llmPromptApply">Apply</button>
+							</div>
 						</div>
 					</div>
 					<div class="container" id="romanization-config-container" style="display: none;">

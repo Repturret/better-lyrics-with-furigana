@@ -77,8 +77,8 @@ export const THEME_STORE_TURNSTILE_URL = `${THEME_STORE_API_URL}/turnstile` as c
 const THEME_REGISTRY_BASE = "https://raw.githubusercontent.com/better-lyrics/themes" as const;
 export const THEME_REGISTRY_URL = `${THEME_REGISTRY_BASE}/master` as const;
 export const THEME_DISCUSSIONS_URL = "https://github.com/better-lyrics/themes/discussions" as const;
-export const TRANSLATE_LYRICS_URL = function (lang: string, text: string): string {
-  return `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${lang}&dt=t&q=${encodeURIComponent(text)}`;
+export const TRANSLATE_LYRICS_URL = function (lang: string, text: string, sourceLang = "auto"): string {
+  return `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang || "auto"}&tl=${lang}&dt=t&q=${encodeURIComponent(text)}`;
 };
 export const TRANSLATE_IN_ROMAJI = function (lang: string, text: string): string {
   return `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${lang}&tl=${lang}-Latn&dt=t&dt=rm&q=${encodeURIComponent(text)}`;

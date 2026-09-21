@@ -13,6 +13,7 @@ import {
   loadDockSettings,
   loadEndTimeModeSetting,
   loadLyricOffsetSettings,
+  loadAlbumArtSizeSetting,
   loadPassiveScrollSetting,
   loadTranslationSettings,
   onAlbumArtEnabled,
@@ -70,6 +71,7 @@ async function modify(isDisposed: () => boolean): Promise<void> {
   loadEndTimeModeSetting();
   loadLyricOffsetSettings();
   loadPassiveScrollSetting();
+  loadAlbumArtSizeSetting();
   loadDockSettings(hideDockOnIdleInFullscreen);
   subscribeToCustomStyles();
   await purgeExpiredKeys();

@@ -27,6 +27,7 @@ import {
   renderLoader,
   setFullscreenNoLyricsState,
 } from "@modules/ui/dom";
+import { runLlmTranslationPass, type LlmTranslationLine } from "@modules/lyrics/forkTranslation";
 import { lyricsElementAdded, mainView } from "@modules/ui/mainLyricsView";
 import { disableNativeLyricsFocus } from "@modules/ui/nativeLyricsFocus";
 import { publishPictureInPictureLyrics } from "@modules/ui/pictureInPicture/lyricsPublisher";
@@ -196,7 +197,7 @@ function injectLyrics(
     addNoLyricsButton(data.song, data.artist, data.album, data.duration, data.videoId);
   }
 
-  void processBatchTranslationsAndRomanizations(doc, data, lines, isStale, signal);
+  void processBatchTranslationsAndRomanizations(doc, data, lines, isStale, signal, keepLoaderVisible);
 
   if (data.segmentMap) {
     applySegmentMapToLyrics(lyricsData, lines, data.segmentMap);
@@ -219,7 +220,10 @@ async function processBatchTranslationsAndRomanizations(
   data: LyricSourceResultWithMeta,
   linesData: readonly LineData[],
   isStale: () => boolean,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  // Placeholder lyrics shown while the real ones load are replaced moments later, so skip the LLM
+  // pass that would only burn quota on them.
+  isTemporary = false
 ): Promise<void> {
   const lyrics = data.lyrics!;
   const targetTranslationLang = AppState.translationLanguage;
@@ -228,8 +232,13 @@ async function processBatchTranslationsAndRomanizations(
 
   const romanizationBatch: { index: number; text: string }[] = [];
   const translationBatch: { index: number; text: string }[] = [];
+  // Every translatable line, in order: the "Best" (LLM) pass re-translates the whole song at once.
+  const llmTranslationLines: LlmTranslationLine[] = [];
 
   let sourceLanguage = data.language;
+  // Lyrics already in the user's target language need no romanization. The setting stays on, it
+  // just doesn't apply to this song.
+  const isDefaultLanguage = !!sourceLanguage && langCodesMatch(targetTranslationLang, sourceLanguage);
   let didInjectCachedContent = false;
 
   // 1. Identify what needs to be translated/romanized
@@ -246,7 +255,7 @@ async function processBatchTranslationsAndRomanizations(
 
     // --- Romanization ---
     const isLanguageDisabledForRomanization = !!trustedLanguage && isRomanizationDisabledForLang(trustedLanguage);
-    if (isRomanizationEnabled && !isLanguageDisabledForRomanization) {
+    if (isRomanizationEnabled && !isLanguageDisabledForRomanization && !isDefaultLanguage) {
       let romanizedResult: string | null = null;
       let timedRomanization: LyricPart[] | null = null;
 
@@ -295,6 +304,12 @@ async function processBatchTranslationsAndRomanizations(
         const cached = getTranslationFromCache(item.words, targetTranslationLang);
         translationResult = cached?.translatedText || null;
       }
+
+      llmTranslationLines.push({
+        index,
+        text: item.words,
+        official: !!(matchedLang || (item.translation && langCodesMatch(targetTranslationLang, item.translation.lang))),
+      });
 
       if (translationResult && !isSameText(translationResult, item.words)) {
         injectTranslation(doc, lyricElement, translationResult);
@@ -350,8 +365,16 @@ async function processBatchTranslationsAndRomanizations(
   if (translationBatch.length > 0) {
     promises.push(
       (async () => {
+        const contextLine = (i: number): string | undefined => {
+          const l = lyrics[i];
+          return l && !l.isInstrumental ? l.words : undefined;
+        };
         const response = await translateBatch({
           lines: translationBatch.map(b => b.text),
+          neighbors: translationBatch.map(b => ({
+            prev: contextLine(b.index - 1),
+            next: contextLine(b.index + 1),
+          })),
           targetLanguage: targetTranslationLang,
           sourceLanguage: sourceLanguage || undefined,
           videoId: data.videoId,
@@ -380,6 +403,30 @@ async function processBatchTranslationsAndRomanizations(
   }
 
   await Promise.all(promises);
+
+  if (
+    isTemporary ||
+    !isTranslateEnabled ||
+    AppState.translationQuality !== "best" ||
+    (sourceLanguage && isTranslationDisabledForLang(sourceLanguage))
+  ) {
+    return;
+  }
+  await runLlmTranslationPass({
+    doc,
+    lines: llmTranslationLines,
+    lyricElementAt: index => linesData[index].lyricElement,
+    targetLanguage: targetTranslationLang,
+    sourceLanguage: sourceLanguage ?? undefined,
+    isStale,
+    isSameText,
+    onTranslation: (index, text) => recordLyricDecoration(index, { translation: text }),
+    onApplied: () => {
+      lyricsElementAdded();
+      publishPictureInPictureLyrics();
+    },
+    signal,
+  });
 }
 
 /**

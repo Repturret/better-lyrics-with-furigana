@@ -38,6 +38,7 @@ interface AppStateType {
   lyricInjectionPromise: Promise<any> | null;
   queueLyricInjection: boolean;
   shouldInjectAlbumArt: "Unknown" | boolean;
+  albumArtSize: number;
   queueSongDetailsInjection: boolean;
   loaderAnimationEndTimeout: number | undefined;
   lastLoadedVideoId: string | null;
@@ -47,6 +48,16 @@ interface AppStateType {
   romanizationDisabledLanguages: string[];
   translationDisabledLanguages: string[];
   translationLanguage: string;
+  /** "fast" = Google MT (default); "best" = user-configured LLM, whole-song context. */
+  translationQuality: "fast" | "best";
+  llmProvider: string;
+  llmModel: string;
+  /** Extra instructions appended to the LLM translation prompt. */
+  llmCustomPrompt: string;
+  /** Ask the LLM for furigana too and swap it in when it arrives (Best mode). */
+  isLlmFuriganaEnabled: boolean;
+  /** Second LLM pass that rewrites the first-pass translation as spoken language. */
+  isLlmRevisionEnabled: boolean;
   isPassiveScrollEnabled: boolean;
   hasPreloadedNextSong: boolean;
   currentInjectionId: number;
@@ -85,6 +96,7 @@ export const AppState: AppStateType = {
   lyricInjectionPromise: null,
   queueLyricInjection: false,
   shouldInjectAlbumArt: "Unknown",
+  albumArtSize: 800,
   queueSongDetailsInjection: false,
   loaderAnimationEndTimeout: undefined,
   lastLoadedVideoId: null,
@@ -94,6 +106,12 @@ export const AppState: AppStateType = {
   romanizationDisabledLanguages: [],
   translationDisabledLanguages: [],
   translationLanguage: "en",
+  translationQuality: "fast",
+  llmProvider: "openai",
+  llmModel: "",
+  llmCustomPrompt: "",
+  isLlmFuriganaEnabled: true,
+  isLlmRevisionEnabled: true,
   isPassiveScrollEnabled: true,
   hasPreloadedNextSong: false,
   currentInjectionId: 0,

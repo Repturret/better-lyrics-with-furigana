@@ -173,10 +173,11 @@ git checkout -b port/2.4.0.9 v2.4.0.9     # 이식은 새 브랜치에서
   - 구현 단계(Phase 6)에서 재확인: PiP의 `tickLyrics()` 위치, 페이지 월드 번들에 fork 모듈이 실제로 포함되는지.
 - **F. 옵션 화면:** 저장/복원 규약(`saveOptions`, `getOptionsFromForm`, `restoreOptions`의 `defaultOptions`/`readKeys`, `setOptionsInForm`, `#options input, #options select` 자동 연결) 동일. 탭은 `display-content`, `language-content`(`isRomanizationEnabled`, `translate`), `sources-content`, `themes-content`, `identity-content`. 추가할 키: `translationQuality`, `llmProvider`, `llmModel`, `llmCustomPrompt`, `isLlmFuriganaEnabled`, `isLlmRevisionEnabled`, `albumArtSize`(`furiganaSource` 제외). 옵션 UI는 JS로 생성해 upstream html 수정을 최소화한다.
 
-### Phase 2 — 비렌더링 기능 (M)
+### Phase 2 — 비렌더링 기능 (M) — 코드 완료(브라우저 실측 대기)
 
-- [ ] 빌드/의존성/사전/`manifest.json`(1), 설정 인프라(2), `translation.ts` 병합(3).
-- [ ] `llmTranslation.ts` 복사, `processBatchTranslationsAndRomanizations`에 훅(4), 로마자 게이팅(5), `isTemporary` 처리.
+- [x] 빌드/의존성/사전/`manifest.json`(1), 설정 인프라(2), `translation.ts` 병합(3). (`extension.config.js`가 rspack으로 바뀌어 `resolve.fallback`은 `config: rspackConfig =>` 안에 넣음)
+- [x] `llmTranslation.ts` 복사, `processBatchTranslationsAndRomanizations`에 훅(4), 로마자 게이팅(5), `isTemporary` 처리.
+- 구현 메모: 업스트림 `translation.ts`에 Unison 번역(`enrichViaUnison`)이 추가돼 Google 앞에서 먼저 호출된다. 3-way 병합 때 Unison 캐시 키도 `cacheKeyFor`로 통일했다. NUL은 `` 이스케이프로 대체. LLM 통합은 `forkTranslation.ts`(`runLlmTranslationPass`)로 분리하고 `injectLyrics.ts`에는 훅만 추가. 후리가나 관련 로마자 게이팅(`songIsJapanese`)은 Phase 4에서 함께 처리.
 - 완료 기준: Best 모드에서 번역이 Google → LLM → 수정 순으로 교체되고, 실패 시 앞 단계가 유지된다. 설정 화면 재오픈 후 값 유지.
 
 ### Phase 3 — 표시 설정 (S~M)

@@ -253,6 +253,7 @@ export function listenForPopupMessages(): void {
       loadTranslationSettings();
       loadLyricOffsetSettings();
       loadPassiveScrollSetting();
+      loadAlbumArtSizeSetting();
       loadDockSettings(() => {
         syncDock();
         hideDockOnIdleInFullscreen();
@@ -289,6 +290,14 @@ export function loadPassiveScrollSetting(): void {
     // The side panel reads this off AppState every tick. The floating window only sees the copy
     // that rode over on the last payload, so a change reaches it on a republish or not at all.
     publishPictureInPictureLyrics();
+  });
+}
+
+export function loadAlbumArtSizeSetting(): void {
+  getStorage({ albumArtSize: 800 }, items => {
+    const size = Number(items.albumArtSize) || 800;
+    AppState.albumArtSize = size;
+    document.documentElement.style.setProperty("--blyrics-album-art-size", `${size}px`);
   });
 }
 
@@ -424,6 +433,12 @@ export function loadTranslationSettings(): void {
       translationLanguage: "en",
       romanizationDisabledLanguages: [],
       translationDisabledLanguages: [],
+      translationQuality: "fast",
+      llmProvider: "openai",
+      llmModel: "",
+      llmCustomPrompt: "",
+      isLlmFuriganaEnabled: true,
+      isLlmRevisionEnabled: true,
     },
     items => {
       AppState.isTranslateEnabled = items.isTranslateEnabled;
@@ -431,6 +446,12 @@ export function loadTranslationSettings(): void {
       AppState.translationLanguage = items.translationLanguage || "en";
       AppState.romanizationDisabledLanguages = items.romanizationDisabledLanguages || [];
       AppState.translationDisabledLanguages = items.translationDisabledLanguages || [];
+      AppState.translationQuality = items.translationQuality === "best" ? "best" : "fast";
+      AppState.llmProvider = items.llmProvider || "openai";
+      AppState.llmModel = items.llmModel || "";
+      AppState.llmCustomPrompt = String(items.llmCustomPrompt ?? "");
+      AppState.isLlmFuriganaEnabled = items.isLlmFuriganaEnabled !== false;
+      AppState.isLlmRevisionEnabled = items.isLlmRevisionEnabled !== false;
     }
   );
 }
