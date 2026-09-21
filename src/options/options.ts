@@ -20,12 +20,20 @@ interface Options {
   isLogsEnabled: boolean;
   isAutoSwitchEnabled: boolean;
   isAlbumArtEnabled: boolean;
+  albumArtSize: number;
   isShadersPromoEnabled: boolean;
   isFullScreenDisabled: boolean;
   isStylizedAnimationsEnabled: boolean;
   isPassiveScrollEnabled: boolean;
   isTranslateEnabled: boolean;
   translationLanguage: string;
+  translationQuality: string;
+  llmProvider: string;
+  llmModel: string;
+  furiganaSource: string;
+  llmCustomPrompt: string;
+  isLlmFuriganaEnabled: boolean;
+  isLlmRevisionEnabled: boolean;
   isCursorAutoHideEnabled: boolean;
   isRomanizationEnabled: boolean;
   preferredProviderList: string[];
@@ -59,6 +67,10 @@ const debouncedSaveOptions = (): void => {
 };
 
 // Function to get options from form elements
+// The custom translation prompt only changes through Apply / Reset: every other
+// control saves the whole form, and typing in the box must not leak into that.
+let appliedCustomPrompt = "";
+
 const getOptionsFromForm = (): Options => {
   const preferredProviderList: string[] = [];
   const providerElems = document.getElementById("providers-list")!.children;
@@ -74,12 +86,20 @@ const getOptionsFromForm = (): Options => {
     isLogsEnabled: (document.getElementById("logs") as HTMLInputElement).checked,
     isAutoSwitchEnabled: (document.getElementById("autoSwitch") as HTMLInputElement).checked,
     isAlbumArtEnabled: (document.getElementById("albumArt") as HTMLInputElement).checked,
+    albumArtSize: parseInt((document.getElementById("albumArtSize") as HTMLInputElement).value, 10) || 800,
     isShadersPromoEnabled: (document.getElementById("isShadersPromoEnabled") as HTMLInputElement).checked,
     isFullScreenDisabled: (document.getElementById("isFullScreenDisabled") as HTMLInputElement).checked,
     isStylizedAnimationsEnabled: (document.getElementById("isStylizedAnimationsEnabled") as HTMLInputElement).checked,
     isPassiveScrollEnabled: (document.getElementById("isPassiveScrollEnabled") as HTMLInputElement).checked,
     isTranslateEnabled: (document.getElementById("translate") as HTMLInputElement).checked,
     translationLanguage: (document.getElementById("translationLanguage") as HTMLInputElement).value,
+    translationQuality: (document.getElementById("translationQuality") as HTMLSelectElement).value,
+    llmProvider: (document.getElementById("llmProvider") as HTMLSelectElement).value,
+    llmModel: (document.getElementById("llmModel") as HTMLInputElement).value.trim(),
+    furiganaSource: (document.getElementById("furiganaSource") as HTMLSelectElement).value,
+    llmCustomPrompt: appliedCustomPrompt,
+    isLlmFuriganaEnabled: (document.getElementById("isLlmFuriganaEnabled") as HTMLInputElement).checked,
+    isLlmRevisionEnabled: (document.getElementById("isLlmRevisionEnabled") as HTMLInputElement).checked,
     isCursorAutoHideEnabled: (document.getElementById("cursorAutoHide") as HTMLInputElement).checked,
     isRomanizationEnabled: (document.getElementById("isRomanizationEnabled") as HTMLInputElement).checked,
     preferredProviderList: preferredProviderList,
@@ -120,6 +140,13 @@ function setDockControlsOrderInForm(order: string[]): void {
     const cell = picker.querySelector(`.control-cell[data-control="${key}"]`);
     if (cell) picker.appendChild(cell);
   }
+}
+
+function setAlbumArtSizeInForm(size: number): void {
+  const slider = document.getElementById("albumArtSize") as HTMLInputElement | null;
+  const label = document.getElementById("albumArtSize-value");
+  if (slider) slider.value = String(size);
+  if (label) label.textContent = `${size}px`;
 }
 
 // Function to save options to Chrome storage
@@ -255,6 +282,14 @@ const restoreOptions = (): void => {
     isPassiveScrollEnabled: true,
     isTranslateEnabled: false,
     translationLanguage: "en",
+    translationQuality: "fast",
+    llmProvider: "openai",
+    llmModel: "",
+    furiganaSource: "local",
+    llmCustomPrompt: "",
+    isLlmFuriganaEnabled: true,
+    isLlmRevisionEnabled: true,
+    albumArtSize: 800,
     isRomanizationEnabled: false,
     preferredProviderList: [
       "bLyrics-richsynced",
@@ -320,6 +355,7 @@ const restoreOptions = (): void => {
 const setOptionsInForm = (items: Options): void => {
   (document.getElementById("logs") as HTMLInputElement).checked = items.isLogsEnabled;
   (document.getElementById("albumArt") as HTMLInputElement).checked = items.isAlbumArtEnabled;
+  setAlbumArtSizeInForm(items.albumArtSize || 800);
   (document.getElementById("isShadersPromoEnabled") as HTMLInputElement).checked = items.isShadersPromoEnabled;
   (document.getElementById("autoSwitch") as HTMLInputElement).checked = items.isAutoSwitchEnabled;
   (document.getElementById("cursorAutoHide") as HTMLInputElement).checked = items.isCursorAutoHideEnabled;
@@ -329,6 +365,16 @@ const setOptionsInForm = (items: Options): void => {
   (document.getElementById("isPassiveScrollEnabled") as HTMLInputElement).checked = items.isPassiveScrollEnabled;
   (document.getElementById("translate") as HTMLInputElement).checked = items.isTranslateEnabled;
   (document.getElementById("translationLanguage") as HTMLInputElement).value = items.translationLanguage;
+  (document.getElementById("translationQuality") as HTMLSelectElement).value = items.translationQuality || "fast";
+  (document.getElementById("llmProvider") as HTMLSelectElement).value = items.llmProvider || "openai";
+  (document.getElementById("llmModel") as HTMLInputElement).value = items.llmModel || "";
+  (document.getElementById("furiganaSource") as HTMLSelectElement).value = items.furiganaSource || "local";
+  appliedCustomPrompt = items.llmCustomPrompt || "";
+  (document.getElementById("llmCustomPrompt") as HTMLTextAreaElement).value = appliedCustomPrompt;
+  updateLlmPromptStatus();
+  (document.getElementById("isLlmFuriganaEnabled") as HTMLInputElement).checked = items.isLlmFuriganaEnabled !== false;
+  (document.getElementById("isLlmRevisionEnabled") as HTMLInputElement).checked = items.isLlmRevisionEnabled !== false;
+  updateLlmConfigVisibility();
   (document.getElementById("isRomanizationEnabled") as HTMLInputElement).checked = items.isRomanizationEnabled;
   (document.getElementById("uiLanguage") as HTMLSelectElement).value = items.uiLanguage;
   (document.getElementById("isUnisonPinnedDockEnabled") as HTMLInputElement).checked = items.isControlsDockEnabled;
@@ -565,6 +611,96 @@ function restoreActiveTab(): void {
   targetContent.classList.add("active");
 }
 
+// -- "Best" (LLM) translation config -----------------------------------------
+
+// Not "blyrics_"-prefixed so the cache cleaners (which delete every blyrics_* key)
+// never take the key with them. LEGACY is the old name, migrated on load.
+const LLM_API_KEY_STORAGE_KEY = "llmApiKey";
+const LEGACY_LLM_API_KEY_STORAGE_KEY = "blyrics_llm_api_key";
+
+// The API key is kept in chrome.storage.local only - it is never synced and
+// never rides in the settings message to the content script.
+function updateLlmConfigVisibility(): void {
+  const quality = (document.getElementById("translationQuality") as HTMLSelectElement | null)?.value;
+  const box = document.getElementById("llmConfig");
+  if (box) box.hidden = quality !== "best";
+}
+
+function initLlmConfig(): void {
+  const keyInput = document.getElementById("llmApiKey") as HTMLInputElement | null;
+  const quality = document.getElementById("translationQuality");
+  if (!keyInput) return;
+
+  chrome.storage.local.get([LLM_API_KEY_STORAGE_KEY, LEGACY_LLM_API_KEY_STORAGE_KEY], stored => {
+    const legacy = String(stored?.[LEGACY_LLM_API_KEY_STORAGE_KEY] ?? "");
+    const current = String(stored?.[LLM_API_KEY_STORAGE_KEY] || legacy);
+    keyInput.value = current;
+    if (legacy) {
+      chrome.storage.local.set({ [LLM_API_KEY_STORAGE_KEY]: current }, () =>
+        chrome.storage.local.remove(LEGACY_LLM_API_KEY_STORAGE_KEY)
+      );
+    }
+  });
+
+  keyInput.addEventListener("change", () => {
+    chrome.storage.local.set({ [LLM_API_KEY_STORAGE_KEY]: keyInput.value.trim() }, () => {
+      // Nudge open tabs to re-run so the new key takes effect immediately.
+      chrome.tabs.query({ url: "https://music.youtube.com/*" }, tabs => {
+        tabs.forEach(tab => tab.id && chrome.tabs.sendMessage(tab.id, { action: "updateSettings", settings: {} }));
+      });
+    });
+  });
+
+  quality?.addEventListener("change", updateLlmConfigVisibility);
+  document.getElementById("llmProvider")?.addEventListener("change", updateLlmConfigVisibility);
+  updateLlmConfigVisibility();
+}
+
+function updateLlmPromptStatus(): void {
+  const area = document.getElementById("llmCustomPrompt") as HTMLTextAreaElement | null;
+  const status = document.getElementById("llmPromptStatus");
+  const applyBtn = document.getElementById("llmPromptApply") as HTMLButtonElement | null;
+  const resetBtn = document.getElementById("llmPromptReset") as HTMLButtonElement | null;
+  if (!area || !status || !applyBtn || !resetBtn) return;
+
+  const draft = area.value.trim();
+  const applied = appliedCustomPrompt.trim();
+  const dirty = draft !== applied;
+  const state = dirty ? "dirty" : applied ? "applied" : "none";
+  status.dataset.state = state;
+  status.textContent = { dirty: "Not applied yet", applied: "Applied", none: "Default prompt" }[state];
+  applyBtn.disabled = !dirty;
+  resetBtn.disabled = !applied && !draft;
+}
+
+function initLlmPromptControls(): void {
+  const area = document.getElementById("llmCustomPrompt") as HTMLTextAreaElement | null;
+  if (!area) return;
+
+  area.addEventListener("input", updateLlmPromptStatus);
+  document.getElementById("llmPromptApply")?.addEventListener("click", () => {
+    appliedCustomPrompt = area.value.trim().slice(0, 2000);
+    area.value = appliedCustomPrompt;
+    saveOptions();
+    updateLlmPromptStatus();
+  });
+  document.getElementById("llmPromptReset")?.addEventListener("click", () => {
+    area.value = "";
+    appliedCustomPrompt = "";
+    saveOptions();
+    updateLlmPromptStatus();
+  });
+  updateLlmPromptStatus();
+}
+
+function initAlbumArtSizeSlider(): void {
+  const slider = document.getElementById("albumArtSize") as HTMLInputElement | null;
+  const label = document.getElementById("albumArtSize-value");
+  slider?.addEventListener("input", () => {
+    if (label) label.textContent = `${slider.value}px`;
+  });
+}
+
 // Event listeners
 document.addEventListener("DOMContentLoaded", async () => {
   await loadLocaleOverride();
@@ -573,6 +709,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   initTabScrollIndicators();
   restoreOptions();
   restoreActiveTab();
+  initLlmConfig();
+  initAlbumArtSizeSlider();
+  initLlmPromptControls();
 });
 document.querySelectorAll("#options input, #options select").forEach(element => {
   element.addEventListener("change", saveOptions);

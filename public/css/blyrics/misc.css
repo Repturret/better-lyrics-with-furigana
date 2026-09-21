@@ -2,6 +2,29 @@
 	display: none !important;
 }
 
+/* Toast shown after selected lyrics are copied to the clipboard */
+.blyrics--copied-toast {
+	position: fixed;
+	z-index: 10000;
+	pointer-events: none;
+	transform: translate(-50%, -100%);
+	padding: 0.4em 0.8em;
+	border-radius: var(--blyrics-small-border-radius, 1rem);
+	background: var(--blyrics-footer-bg-color, hsla(0, 0%, 100%, 0.1));
+	border: 1px solid var(--blyrics-footer-border-color, hsla(0, 0%, 100%, 0.1));
+	backdrop-filter: blur(12px);
+	color: var(--blyrics-footer-link-color, #fff);
+	font-family: var(--blyrics-footer-font-family);
+	font-size: var(--blyrics-footer-font-size, 14px);
+	font-weight: 500;
+	opacity: 0;
+	transition: opacity 0.15s ease;
+}
+
+.blyrics--copied-toast.blyrics--copied-toast-visible {
+	opacity: 1;
+}
+
 /* Miscellaneous styles */
 .blyrics--error {
 	align-self: flex-start !important;

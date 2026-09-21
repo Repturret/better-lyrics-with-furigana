@@ -981,6 +981,10 @@
     "message": "[엘리베이터 음악]",
     "description": "Message shown during ad playback"
   },
+  "lyrics_copied": {
+    "message": "복사됨",
+    "description": "Toast shown after the selected lyrics are copied to the clipboard"
+  },
   "lyrics_notFound": {
     "message": "이 노래의 가사를 찾을 수 없습니다",
     "description": "Message when no lyrics are available"

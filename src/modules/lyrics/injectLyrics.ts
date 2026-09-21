@@ -23,6 +23,21 @@ import {
 import { AppState } from "@core/appState";
 import { t } from "@core/i18n";
 import { createInstrumentalElement } from "@modules/lyrics/createInstrumentalElement";
+import {
+  annotateFurigana,
+  annotateFuriganaFromRomaji,
+  applyLlmFurigana,
+  hasKana,
+  setSongFuriganaOverrides,
+  shouldFurigana,
+} from "@modules/lyrics/furigana";
+import { attachLineInteractions, hasActiveTextSelection, isInSeekGutter } from "@modules/lyrics/lineInteractions";
+import {
+  furiganaWithLlm,
+  getLlmConfig,
+  reviseTranslationWithLlm,
+  translateLinesWithLlm,
+} from "@modules/lyrics/llmTranslation";
 import { containsNonLatin, detectNonLatinLanguage, testRtl } from "@modules/lyrics/lyricParseUtils";
 import { applySegmentMapToLyrics, type LyricSourceResultWithMeta } from "@modules/lyrics/lyrics";
 import type { Lyric, LyricPart } from "@modules/lyrics/providers/shared";
@@ -33,6 +48,7 @@ import {
   romanizeBatch,
   translateBatch,
 } from "@modules/lyrics/translation";
+import { getUtatenOverrides } from "@modules/lyrics/utatenFurigana";
 import { registerThemeSetting } from "@modules/settings/themeOptions";
 import { animEngineState, lyricsElementAdded } from "@modules/ui/animationEngine";
 import { resizeCanvas } from "@modules/ui/animationEngineDebug";
@@ -402,6 +418,7 @@ function injectLyrics(data: LyricSourceResultWithMeta, keepLoaderVisible = false
   const lyricsContainer = document.createElement("div");
   lyricsContainer.className = LYRICS_CLASS;
   lyricsWrapper.appendChild(lyricsContainer);
+  attachLineInteractions(lyricsContainer);
 
   lyricsWrapper.removeAttribute("is-empty");
 
@@ -529,36 +546,40 @@ function injectLyrics(data: LyricSourceResultWithMeta, keepLoaderVisible = false
     }
 
     if (!allZero) {
-      lyricElement.addEventListener("click", e => {
+      const seekFromEvent = (e: MouseEvent, requireGutter: boolean): void => {
         const target = e.target as HTMLElement;
         const container = lyricElement.closest(`.${LYRICS_CLASS}`) as HTMLElement | null;
         const isRichsync = container?.dataset.sync === "richsync";
+        const isWordSeek = isRichsync && e.altKey;
+
+        // Single click only seeks from the leading-edge gutter, so the rest of the
+        // line stays free for selecting text; Alt+click and double-click seek from
+        // anywhere on the line.
+        if (requireGutter && !isWordSeek && (hasActiveTextSelection() || !isInSeekGutter(lyricElement, e.clientX))) {
+          return;
+        }
 
         let seekTime: number;
-        if (isRichsync) {
-          if (e.altKey) {
-            let wordElement = target.closest(`.${WORD_CLASS}`) as HTMLElement | null;
+        if (isRichsync && e.altKey) {
+          let wordElement = target.closest(`.${WORD_CLASS}`) as HTMLElement | null;
 
-            if (!wordElement) {
-              const words = lyricElement.querySelectorAll(`.${WORD_CLASS}`);
-              let closestDist = Infinity;
-              words.forEach(word => {
-                const rect = word.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-                const dist = Math.hypot(e.clientX - centerX, e.clientY - centerY);
-                if (dist < closestDist) {
-                  closestDist = dist;
-                  wordElement = word as HTMLElement;
-                }
-              });
-            }
-
-            if (!wordElement) return;
-            seekTime = parseFloat(wordElement.dataset.time || "0");
-          } else {
-            seekTime = parseFloat(lyricElement.dataset.time || "0");
+          if (!wordElement) {
+            const words = lyricElement.querySelectorAll(`.${WORD_CLASS}`);
+            let closestDist = Infinity;
+            words.forEach(word => {
+              const rect = word.getBoundingClientRect();
+              const centerX = rect.left + rect.width / 2;
+              const centerY = rect.top + rect.height / 2;
+              const dist = Math.hypot(e.clientX - centerX, e.clientY - centerY);
+              if (dist < closestDist) {
+                closestDist = dist;
+                wordElement = word as HTMLElement;
+              }
+            });
           }
+
+          if (!wordElement) return;
+          seekTime = parseFloat(wordElement.dataset.time || "0");
         } else {
           seekTime = parseFloat(lyricElement.dataset.time || "0");
         }
@@ -566,9 +587,18 @@ function injectLyrics(data: LyricSourceResultWithMeta, keepLoaderVisible = false
         log(LOG_PREFIX, `Seeking to ${seekTime.toFixed(2)}s`);
         document.dispatchEvent(new CustomEvent("blyrics-seek-to", { detail: seekTime }));
         animEngineState.scrollResumeTime = 0;
+      };
+
+      lyricElement.addEventListener("click", e => seekFromEvent(e, true));
+      // Double-click anywhere on the line seeks too; drop the word selection the
+      // double-click just made so it doesn't get copied.
+      lyricElement.addEventListener("dblclick", e => {
+        seekFromEvent(e, false);
+        window.getSelection()?.removeAllRanges();
       });
     } else {
-      lyricElement.style.cursor = "unset";
+      // Unsynced lyrics cannot be seeked, so there is no gutter at all.
+      lyricElement.dataset.noSeek = "true";
     }
 
     lines.push(line);
@@ -576,7 +606,7 @@ function injectLyrics(data: LyricSourceResultWithMeta, keepLoaderVisible = false
   });
 
   // Handle Translations and Romanizations in Batch
-  processBatchTranslationsAndRomanizations(data, lines, isStale, signal);
+  processBatchTranslationsAndRomanizations(data, lines, isStale, signal, keepLoaderVisible);
 
   animEngineState.skipScrolls = 2;
   animEngineState.skipScrollsDecayTimes = [];
@@ -647,7 +677,10 @@ async function processBatchTranslationsAndRomanizations(
   data: LyricSourceResultWithMeta,
   linesData: LineData[],
   isStale: () => boolean,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  // Placeholder lyrics shown while the real (synced) ones load: they are replaced
+  // moments later, so skip the LLM passes that would only burn quota on them.
+  isTemporary = false
 ): Promise<void> {
   const lyrics = data.lyrics!;
   const targetTranslationLang = AppState.translationLanguage;
@@ -656,8 +689,24 @@ async function processBatchTranslationsAndRomanizations(
 
   const romanizationBatch: { index: number; text: string }[] = [];
   const translationBatch: { index: number; text: string }[] = [];
+  // Every translatable line, in order - the "Best" (LLM) pass re-translates the
+  // whole song at once for cross-line context, then swaps its lines in.
+  const llmTranslationLines: { index: number; text: string; official: boolean }[] = [];
+  // Japanese lines: furigana instead of romaji. We still route them through the
+  // romanization batch (it fills the reading cache), then convert that romaji to
+  // kana; kuromoji is the offline fallback.
+  const furiganaLines: { index: number; lineData: LineData; text: string }[] = [];
+  setSongFuriganaOverrides([]);
 
   let sourceLanguage = data.language;
+  // Lyrics already in the user's default (target) language need no romanization.
+  // The setting stays on - it just doesn't apply to this song.
+  const isDefaultLanguage = !!sourceLanguage && langCodesMatch(targetTranslationLang, sourceLanguage);
+
+  // If any line has kana the whole song is Japanese, even if detection said
+  // otherwise - so its kanji-only lines also get furigana rather than romaji.
+  const songIsJapanese = lyrics.some(item => !item.isInstrumental && hasKana(item.words));
+  const furiganaSourceLang = songIsJapanese ? "ja" : sourceLanguage;
 
   // 1. Identify what needs to be translated/romanized
   lyrics.forEach((item, index) => {
@@ -668,7 +717,20 @@ async function processBatchTranslationsAndRomanizations(
 
     // --- Romanization ---
     const isLanguageDisabledForRomanization = sourceLanguage && isRomanizationDisabledForLang(sourceLanguage);
-    if (isRomanizationEnabled && !isLanguageDisabledForRomanization) {
+    // A Japanese song still gets furigana even if the detected language is on the
+    // romanization block list (detection can be wrong; kana can't).
+    if (
+      isRomanizationEnabled &&
+      (songIsJapanese || !isLanguageDisabledForRomanization) &&
+      shouldFurigana(item.words, furiganaSourceLang)
+    ) {
+      furiganaLines.push({ index, lineData, text: item.words });
+      // Pull romaji through the batch so its cache fills; the furigana pass after
+      // Promise.all reads it back and cross-checks against kuromoji.
+      if (!item.romanization && !getRomanizationFromCache(item.words)) {
+        romanizationBatch.push({ index, text: item.words });
+      }
+    } else if (isRomanizationEnabled && !isLanguageDisabledForRomanization && !isDefaultLanguage) {
       let romanizedResult: string | null = null;
       let timedRomanization: LyricPart[] | null = null;
 
@@ -702,6 +764,9 @@ async function processBatchTranslationsAndRomanizations(
 
       const matchedLang =
         item.translations && Object.keys(item.translations).find(lang => langCodesMatch(targetTranslationLang, lang));
+      const hasOfficial =
+        !!(item.translations && matchedLang) ||
+        !!(item.translation && langCodesMatch(targetTranslationLang, item.translation.lang));
       if (item.translations && matchedLang) {
         translationResult = item.translations[matchedLang];
       } else if (item.translation && langCodesMatch(targetTranslationLang, item.translation.lang)) {
@@ -710,6 +775,8 @@ async function processBatchTranslationsAndRomanizations(
         const cached = getTranslationFromCache(item.words, targetTranslationLang);
         translationResult = cached?.translatedText || null;
       }
+
+      llmTranslationLines.push({ index, text: item.words, official: hasOfficial });
 
       if (translationResult && !isSameText(translationResult, item.words)) {
         injectTranslation(lyricElement, translationResult);
@@ -720,6 +787,23 @@ async function processBatchTranslationsAndRomanizations(
   });
 
   if (isStale()) return;
+
+  // Ask the LLM for the sung readings while the batches below are in flight; the
+  // answer is swapped in over the local furigana once that is on screen.
+  const llmFuriganaRequest =
+    furiganaLines.length > 0 && AppState.isLlmFuriganaEnabled && !isTemporary
+      ? getLlmConfig()
+          .then(cfg =>
+            cfg
+              ? furiganaWithLlm(
+                  furiganaLines.map(l => l.text),
+                  cfg,
+                  signal
+                )
+              : null
+          )
+          .catch(() => null)
+      : Promise.resolve(null);
 
   // 2. Perform Batch Requests
   const promises: Promise<void>[] = [];
@@ -741,8 +825,9 @@ async function processBatchTranslationsAndRomanizations(
 
         if (isRomanizationDisabledForLang(sourceLanguage || "")) return;
 
+        const furiganaIndices = new Set(furiganaLines.map(f => f.index));
         response.results.forEach((result, i) => {
-          if (result) {
+          if (result && !furiganaIndices.has(romanizationBatch[i].index)) {
             const originalIndex = romanizationBatch[i].index;
             injectRomanization(linesData[originalIndex].lyricElement, linesData[originalIndex], result);
           }
@@ -755,9 +840,18 @@ async function processBatchTranslationsAndRomanizations(
   if (translationBatch.length > 0) {
     promises.push(
       (async () => {
+        const contextLine = (i: number): string | undefined => {
+          const l = lyrics[i];
+          return l && !l.isInstrumental ? l.words : undefined;
+        };
         const response = await translateBatch({
           lines: translationBatch.map(b => b.text),
+          neighbors: translationBatch.map(b => ({
+            prev: contextLine(b.index - 1),
+            next: contextLine(b.index + 1),
+          })),
           targetLanguage: targetTranslationLang,
+          sourceLanguage: sourceLanguage || undefined,
           signal,
         });
         if (isStale()) return;
@@ -781,6 +875,95 @@ async function processBatchTranslationsAndRomanizations(
   }
 
   await Promise.all(promises);
+
+  // "Best" quality: re-translate the whole song through the user's LLM for
+  // cross-line context, then swap the improved lines in over the Google ones.
+  // Silently no-ops when the mode is off / no API key / the request fails.
+  const swapInLlmTranslation = async (): Promise<void> => {
+    if (
+      isTemporary ||
+      !isTranslateEnabled ||
+      llmTranslationLines.length === 0 ||
+      isStale() ||
+      (sourceLanguage && isTranslationDisabledForLang(sourceLanguage))
+    ) {
+      return;
+    }
+    const cfg = await getLlmConfig();
+    if (!cfg || isStale()) return;
+
+    const texts = llmTranslationLines.map(l => l.text);
+    const improved = await translateLinesWithLlm(texts, targetTranslationLang, sourceLanguage, cfg, signal);
+    if (isStale()) return;
+
+    let applied = 0;
+    improved.forEach((translated, i) => {
+      const line = llmTranslationLines[i];
+      if (!translated || line.official || isSameText(translated, line.text)) return;
+      upsertTranslation(linesData[line.index].lyricElement, translated);
+      applied++;
+    });
+    if (applied > 0) lyricsElementAdded();
+
+    // Second pass: give the model the drafts back to be rewritten as natural
+    // spoken language, then swap the revised lines in over the first-pass ones.
+    if (!AppState.isLlmRevisionEnabled) return;
+    const drafts = improved.map((translated, i) => {
+      const line = llmTranslationLines[i];
+      return translated && !line.official && !isSameText(translated, line.text) ? translated : null;
+    });
+    const revised = await reviseTranslationWithLlm(texts, drafts, targetTranslationLang, cfg, signal);
+    if (isStale()) return;
+
+    let revisedCount = 0;
+    revised.forEach((text, i) => {
+      if (!text || !drafts[i] || text === drafts[i] || isSameText(text, llmTranslationLines[i].text)) return;
+      upsertTranslation(linesData[llmTranslationLines[i].index].lyricElement, text);
+      revisedCount++;
+    });
+    if (revisedCount > 0) lyricsElementAdded();
+  };
+  // Started now so the round trip overlaps the local furigana pass below.
+  const llmTranslationTask = swapInLlmTranslation();
+
+  if (furiganaLines.length > 0) {
+    setSongFuriganaOverrides(
+      AppState.furiganaSource === "utaten" ? await getUtatenOverrides(data.song, data.artist, signal) : []
+    );
+    if (isStale()) return;
+    for (const { lineData, text } of furiganaLines) {
+      const el = lineData.lyricElement;
+      const romaji = getRomanizationFromCache(text);
+      // With romaji: align it and cross-check against kuromoji. Without: kuromoji
+      // only. Both no-op if the line already has furigana.
+      const done = romaji ? await annotateFuriganaFromRomaji(el, text, romaji) : false;
+      if (!done) await annotateFurigana(el, text);
+    }
+    lyricsElementAdded();
+  }
+
+  // AI furigana: everything above stays as the first answer; once the LLM's
+  // sung readings arrive they quietly replace the lines they differ on.
+  const pairsByLine = await llmFuriganaRequest;
+  if (pairsByLine && !isStale()) {
+    let changed = 0;
+    furiganaLines.forEach(({ lineData, text }, i) => {
+      if (applyLlmFurigana(lineData.lyricElement, text, pairsByLine[i] ?? [])) changed++;
+    });
+    if (changed > 0) lyricsElementAdded();
+  }
+
+  await llmTranslationTask;
+}
+
+/** Replace the translation row's text in place, or add it if not present yet. */
+function upsertTranslation(lyricElement: HTMLElement, text: string): void {
+  const existing = lyricElement.querySelector<HTMLElement>(`.${TRANSLATED_LYRICS_CLASS}`);
+  if (existing) {
+    if (existing.textContent !== text) existing.textContent = text;
+    return;
+  }
+  injectTranslation(lyricElement, text);
 }
 
 function injectRomanization(
@@ -791,10 +974,11 @@ function injectRomanization(
 ) {
   if (lyricElement.querySelector(`.${ROMANIZED_LYRICS_CLASS}`)) return;
 
-  createBreakElem(lyricElement, 4);
+  // Negative order puts the romanization above the lyric, furigana style.
+  createBreakElem(lyricElement, -1);
   const romanizedLine = document.createElement("div");
   romanizedLine.classList.add(ROMANIZED_LYRICS_CLASS);
-  romanizedLine.style.order = "5";
+  romanizedLine.style.order = "-2";
 
   if (timedRomanization && timedRomanization.length > 0 && !disableRichsync.getBooleanValue()) {
     createLyricsLine(timedRomanization, lineData, romanizedLine);

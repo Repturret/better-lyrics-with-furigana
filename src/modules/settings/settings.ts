@@ -230,6 +230,7 @@ export function listenForPopupMessages(): void {
       loadTranslationSettings();
       loadLyricOffsetSettings();
       loadPassiveScrollSetting();
+      loadAlbumArtSizeSetting();
       loadDockSettings(() => {
         syncDock();
         hideDockOnIdleInFullscreen();
@@ -262,6 +263,14 @@ export function listenForPopupMessages(): void {
 export function loadPassiveScrollSetting(): void {
   getStorage({ isPassiveScrollEnabled: true }, items => {
     AppState.isPassiveScrollEnabled = items.isPassiveScrollEnabled;
+  });
+}
+
+export function loadAlbumArtSizeSetting(): void {
+  getStorage({ albumArtSize: 800 }, items => {
+    const size = Number(items.albumArtSize) || 800;
+    AppState.albumArtSize = size;
+    document.documentElement.style.setProperty("--blyrics-album-art-size", `${size}px`);
   });
 }
 
@@ -393,6 +402,13 @@ export function loadTranslationSettings(): void {
       translationLanguage: "en",
       romanizationDisabledLanguages: [],
       translationDisabledLanguages: [],
+      translationQuality: "fast",
+      llmProvider: "openai",
+      llmModel: "",
+      furiganaSource: "local",
+      llmCustomPrompt: "",
+      isLlmFuriganaEnabled: true,
+      isLlmRevisionEnabled: true,
     },
     items => {
       AppState.isTranslateEnabled = items.isTranslateEnabled;
@@ -400,6 +416,13 @@ export function loadTranslationSettings(): void {
       AppState.translationLanguage = items.translationLanguage || "en";
       AppState.romanizationDisabledLanguages = items.romanizationDisabledLanguages || [];
       AppState.translationDisabledLanguages = items.translationDisabledLanguages || [];
+      AppState.translationQuality = items.translationQuality === "best" ? "best" : "fast";
+      AppState.llmProvider = items.llmProvider || "openai";
+      AppState.llmModel = items.llmModel || "";
+      AppState.furiganaSource = items.furiganaSource === "utaten" ? "utaten" : "local";
+      AppState.llmCustomPrompt = String(items.llmCustomPrompt ?? "");
+      AppState.isLlmFuriganaEnabled = items.isLlmFuriganaEnabled !== false;
+      AppState.isLlmRevisionEnabled = items.isLlmRevisionEnabled !== false;
     }
   );
 }

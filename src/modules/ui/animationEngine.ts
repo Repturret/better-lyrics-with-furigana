@@ -34,9 +34,6 @@ export const SCROLL_POS_OFFSET_RATIO = registerThemeSetting("blyrics-target-scro
 
 const PASSIVE_SCROLL_ENABLED = registerThemeSetting("blyrics-passive-scroll-enabled", true);
 const PASSIVE_SECONDS_PER_LINE = registerThemeSetting("blyrics-passive-scroll-seconds-per-line", 3.5);
-const PASSIVE_BOTTOM_PAUSE_S = registerThemeSetting("blyrics-passive-scroll-bottom-pause-s", 1.5);
-const PASSIVE_RESET_DURATION_S = registerThemeSetting("blyrics-passive-scroll-reset-duration-s", 0.6);
-const PASSIVE_TOP_PAUSE_S = registerThemeSetting("blyrics-passive-scroll-top-pause-s", 0.8);
 
 interface AnimEngineState {
   skipScrolls: number;
@@ -228,32 +225,13 @@ function passiveScrollEngine(isPlaying: boolean): void {
   if (numLines === 0) return;
 
   const scrollDuration = numLines * PASSIVE_SECONDS_PER_LINE.getNumberValue();
-  const bottomPause = PASSIVE_BOTTOM_PAUSE_S.getNumberValue();
-  const resetDuration = PASSIVE_RESET_DURATION_S.getNumberValue();
-  const topPause = PASSIVE_TOP_PAUSE_S.getNumberValue();
-  const cycleLength = scrollDuration + bottomPause + resetDuration + topPause;
 
   const maxScroll = tabRenderer.scrollHeight - tabRenderer.clientHeight;
   if (maxScroll <= 0) return;
 
-  const cycleTime = animEngineState.passiveScrollAccumulatedTime % cycleLength;
-
-  let targetScroll: number;
-  if (cycleTime < scrollDuration) {
-    // Phase 1: linear scroll down
-    targetScroll = (cycleTime / scrollDuration) * maxScroll;
-  } else if (cycleTime < scrollDuration + bottomPause) {
-    // Phase 2: hold at bottom
-    targetScroll = maxScroll;
-  } else if (cycleTime < scrollDuration + bottomPause + resetDuration) {
-    // Phase 3: ease-out scroll back to top
-    const resetProgress = (cycleTime - scrollDuration - bottomPause) / resetDuration;
-    const eased = 1 - (1 - resetProgress) * (1 - resetProgress);
-    targetScroll = maxScroll * (1 - eased);
-  } else {
-    // Phase 4: hold at top
-    targetScroll = 0;
-  }
+  // Scroll down linearly and stay at the bottom - it never wraps back to the top.
+  const progress = Math.min(animEngineState.passiveScrollAccumulatedTime / scrollDuration, 1);
+  const targetScroll = progress * maxScroll;
 
   const prevScrollTop = tabRenderer.scrollTop;
   tabRenderer.scrollTop = targetScroll;

@@ -15,10 +15,19 @@
 }
 
 .blyrics-container > div {
-	cursor: pointer;
+	cursor: text;
 	padding-bottom: var(--blyrics-padding) !important;
 	transform-origin: left center;
 	word-break: break-word;
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+/* Instrumental breaks have no selectable text, so the whole row stays a seek target. */
+.blyrics-container > div.blyrics--instrumental {
+	cursor: pointer;
+	-webkit-user-select: none;
+	user-select: none;
 }
 
 .blyrics-container > div,
@@ -28,6 +37,16 @@
 
 .blyrics--active {
 	cursor: default;
+}
+
+/*
+ * Unsynced lyrics never get an active line, so nothing would ever brighten:
+ * show every line (and its reading aids) in the active state instead.
+ */
+.blyrics-container[data-sync="none"] {
+	--blyrics-lyric-inactive-color: var(--blyrics-lyric-active-color);
+	--blyrics-translated-inactive-opacity: 1;
+	--blyrics-furigana-inactive-opacity: var(--blyrics-furigana-active-opacity);
 }
 
 :not(.blyrics-background-lyric) {
@@ -41,6 +60,105 @@
 .blyrics--line > span > span.blyrics-background-lyric {
 	font-size: 0.75em;
 	font-weight: 500;
+}
+
+/*
+ * Seek gutter: only the leading edge of a line seeks, the rest is selectable
+ * text. The gutter takes up no space at rest - the lyrics sit flush left as
+ * before - and the room for the bar is only made on hover, by pushing the line
+ * content aside.
+ */
+.blyrics--line:not(.blyrics--instrumental):not([data-no-seek="true"]) {
+	position: relative;
+}
+
+/*
+ * The bar is a flex item inside the line, so it tracks the *text*: on duet lines
+ * the words are right-aligned or centred (the [data-agent] rules further down)
+ * and an edge-anchored bar would be stranded away from them. Its inline margin
+ * cancels its own width, so it takes up no space and never reflows the line - the
+ * words themselves slide on hover (below) to open the gap the bar sits in. The JS
+ * hit test (isInSeekGutter) measures the words and undoes that slide, so the zone
+ * stays put while hovered.
+ */
+.blyrics--line:not(.blyrics--instrumental):not([data-no-seek="true"])::before {
+	content: "";
+	flex: 0 0 auto;
+	align-self: center;
+	width: var(--blyrics-seek-gutter-width);
+	height: 1em;
+	/* First child, sitting at the text's leading (left) edge. The inline-end
+	   margin all but cancels its width - a 1px footprint remains so the flex
+	   layout can't let this zero-size item ride the row of a full-width break
+	   (the one that pushes romanization above the lyric); it must wrap onto the
+	   word row instead. */
+	margin-inline-end: calc(1px - var(--blyrics-seek-gutter-width));
+	background-image: linear-gradient(
+		var(--blyrics-lyric-inactive-color),
+		var(--blyrics-lyric-inactive-color)
+	);
+	background-size: var(--blyrics-seek-gutter-bar-width) 100%;
+	background-position: left center;
+	background-repeat: no-repeat;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--blyrics-seek-gutter-transition-duration) ease;
+}
+
+/*
+ * Right-aligned lines (secondary/tertiary vocals, RTL): move the slot past the
+ * words to the trailing edge and hang the bar off the right.
+ */
+.blyrics--line[data-agent="v2"]:not(.blyrics--instrumental):not([data-no-seek="true"])::before,
+.blyrics--line[data-agent="v3"]:not(.blyrics--instrumental):not([data-no-seek="true"])::before,
+.blyrics--line.blyrics-rtl:not(.blyrics--instrumental):not([data-no-seek="true"])::before {
+	order: 1;
+	margin-inline: calc(1px - var(--blyrics-seek-gutter-width)) 0;
+	background-position: right center;
+}
+
+/*
+ * Furigana adds a gap above every word, which pulls the flex row's centre up;
+ * match it so the bar stays level with the kanji instead of the reading.
+ */
+.blyrics--line:has(.blyrics--furigana):not(.blyrics--instrumental):not([data-no-seek="true"])::before {
+	margin-top: var(--blyrics-furigana-gap);
+}
+
+/*
+ * The words slide aside on hover to reveal the bar. `translate` (not `transform`)
+ * so it composes with the word animations; `> *` also matches .blyrics--translated,
+ * so its brightness fade rides along here too - a rule on .blyrics--translated
+ * alone loses to this selector's specificity and the shorthand would wipe it.
+ */
+.blyrics--line:not(.blyrics--instrumental):not([data-no-seek="true"]) > * {
+	translate: 0;
+	transition:
+		translate var(--blyrics-seek-gutter-transition-duration)
+			var(--blyrics-seek-gutter-transition-easing),
+		opacity var(--blyrics-translated-fade-duration) ease-in-out;
+}
+
+.blyrics--line.blyrics--seek-hover {
+	cursor: pointer;
+}
+
+.blyrics--line.blyrics--seek-hover:not(.blyrics--instrumental):not([data-no-seek="true"]) > * {
+	translate: var(--blyrics-seek-gutter-width);
+}
+
+.blyrics--line[data-agent="v2"].blyrics--seek-hover:not(.blyrics--instrumental):not([data-no-seek="true"]) > *,
+.blyrics--line[data-agent="v3"].blyrics--seek-hover:not(.blyrics--instrumental):not([data-no-seek="true"]) > *,
+.blyrics--line.blyrics-rtl.blyrics--seek-hover:not(.blyrics--instrumental):not([data-no-seek="true"]) > * {
+	translate: calc(-1 * var(--blyrics-seek-gutter-width));
+}
+
+.blyrics--line.blyrics--seek-hover:not(.blyrics--instrumental):not([data-no-seek="true"])::before {
+	opacity: var(--blyrics-seek-gutter-bar-opacity);
+	background-image: linear-gradient(
+		var(--blyrics-lyric-active-color),
+		var(--blyrics-lyric-active-color)
+	);
 }
 
 .blyrics--line {
@@ -78,6 +196,113 @@
 	white-space: pre;
 	display: inline-block;
 	transform: translateY(0px);
+}
+
+/* Per-word furigana (Japanese kana reading), hung above the word. */
+.blyrics--furigana {
+	position: absolute;
+	left: 0; /* per-run: inline left = horizontal centre of the kanji run */
+	bottom: 100%;
+	font-size: var(--blyrics-furigana-font-size);
+	font-weight: 400;
+	line-height: 1;
+	white-space: nowrap;
+	pointer-events: none;
+	-webkit-user-select: none;
+	user-select: none;
+	color: var(--blyrics-lyric-inactive-color);
+	opacity: var(--blyrics-furigana-inactive-opacity);
+	transform: translate(-50%, 0.15em);
+	transition: opacity var(--blyrics-furigana-fade-duration) ease;
+}
+
+/* Readings replaced by the AI pass fade in over the ones they replace. */
+.blyrics--furigana-swapped {
+	animation: blyrics-furigana-swap-in 0.6s ease;
+}
+
+@keyframes blyrics-furigana-swap-in {
+	from {
+		opacity: 0;
+	}
+}
+
+/* Upcoming readings on the current line read a little brighter than distant ones. */
+.blyrics--line.blyrics--active .blyrics--furigana {
+	opacity: var(--blyrics-furigana-active-opacity);
+}
+
+/*
+ * Ruby highlight: a clone of the reading, clipped to a gradient that the karaoke
+ * animation sweeps left-to-right - the same trick .blyrics--word::after uses,
+ * driven by the same per-word --blyrics-swipe-delay / --blyrics-duration so the
+ * reading fills in step with its kanji.
+ */
+.blyrics--furigana::after {
+	content: attr(data-content);
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	pointer-events: none;
+	color: transparent;
+	-webkit-background-clip: text;
+	background-clip: text;
+	background-image: linear-gradient(
+		90deg,
+		var(--blyrics-lyric-active-color)
+			calc(var(--lyric-transition-amount-start) * 100%),
+		#00000000 calc(var(--lyric-transition-amount-end) * 100%)
+	);
+	opacity: 0;
+	--lyric-transition-amount-start: -0.2;
+	--lyric-transition-amount-end: -0.1;
+	will-change: background-image;
+	transition:
+		--lyric-transition-amount-start 1s linear 1000s,
+		--lyric-transition-amount-end 1s linear 1000s,
+		opacity var(--blyrics-lyric-highlight-fade-out-duration) ease;
+}
+
+.blyrics--word.blyrics--animating .blyrics--furigana::after {
+	opacity: 1;
+	--lyric-transition-amount-start: 1.4;
+	--lyric-transition-amount-end: 1.5;
+	transition-property:
+		--lyric-transition-amount-start, --lyric-transition-amount-end, opacity;
+	/* Sweep over just this run's kanji (set per-span), not the whole word - and
+	   start it when those kanji are sung: --blyrics-furigana-offset is the time
+	   spent on whatever precedes them inside the same word span (思い出's 出). */
+	transition-duration:
+		calc(var(--blyrics-furigana-duration, var(--blyrics-duration)) * 1.6),
+		calc(var(--blyrics-furigana-duration, var(--blyrics-duration)) * 1.6),
+		var(--blyrics-lyric-highlight-fade-in-duration);
+	transition-timing-function: linear, linear, ease;
+	transition-delay:
+		calc(var(--blyrics-swipe-delay, 0s) + var(--blyrics-furigana-offset, 0s)),
+		calc(var(--blyrics-swipe-delay, 0s) + var(--blyrics-furigana-offset, 0s)),
+		var(--blyrics-anim-delay);
+}
+
+.blyrics--word.blyrics--animating.blyrics--paused .blyrics--furigana::after {
+	transition-duration: 100000000s, 100000000s, 100000000s;
+	--lyric-transition-amount-start: 10;
+	--lyric-transition-amount-end: 10;
+	opacity: 0.5;
+}
+
+/*
+ * Room for the readings comes from a top margin on each word, so every wrapped
+ * row of a long line gets it - not just the first. The line pulls itself up by
+ * the same amount so a furigana line is not spaced differently from its
+ * neighbours, and the translation row (not a word) is untouched.
+ */
+.blyrics--line:has(.blyrics--furigana) {
+	margin-top: calc(-1 * var(--blyrics-furigana-gap));
+}
+
+.blyrics--line:has(.blyrics--furigana) .blyrics--word {
+	margin-top: var(--blyrics-furigana-gap);
 }
 
 
@@ -204,7 +429,24 @@
 	color: var(--blyrics-translated-color);
 	white-space: normal;
 	line-height: 1.1;
-	margin-top: 8px;
+	/* Reading aids only: never part of a text selection or a copy. */
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+/* Translation sits below the lyric */
+.blyrics--translated {
+	margin-top: 0.35em;
+	/* Dim like the other reading-aid text until this line is the active one,
+	   then rise gradually to the translation's normal brightness. The fade
+	   itself is defined on the `.blyrics--line > *` rule above; this is the
+	   fallback for lines that rule skips (e.g. data-no-seek). */
+	opacity: var(--blyrics-translated-inactive-opacity);
+	transition: opacity var(--blyrics-translated-fade-duration) ease-in-out;
+}
+
+.blyrics--line.blyrics--active .blyrics--translated {
+	opacity: 1;
 }
 
 .blyrics--romanized > span {
@@ -213,16 +455,12 @@
 	white-space: pre-wrap;
 }
 
-/* Romanization */
+/* Romanization sits above the lyric, furigana style */
 .blyrics--romanized {
-	/* font-style: italic; */
 	width: fit-content;
-	padding-block: 1rem;
-	font-size: calc(var(--blyrics-translated-font-size) / 1.25);
-	background: rgba(255, 255, 255, 0.05);
-	padding: 0.375rem 0.75rem;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	border-radius: 1rem;
+	font-size: var(--blyrics-romanized-font-size);
+	margin-bottom: 0.3em;
+	opacity: var(--blyrics-romanized-opacity);
 }
 
 .blyrics-rtl {

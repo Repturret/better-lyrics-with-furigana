@@ -9,6 +9,7 @@ import {
   hideCursorOnIdle,
   hideDockOnIdleInFullscreen,
   listenForPopupMessages,
+  loadAlbumArtSizeSetting,
   loadDockSettings,
   loadLyricOffsetSettings,
   loadPassiveScrollSetting,
@@ -49,6 +50,7 @@ async function modify(): Promise<void> {
   loadTranslationSettings();
   loadLyricOffsetSettings();
   loadPassiveScrollSetting();
+  loadAlbumArtSizeSetting();
   loadDockSettings(hideDockOnIdleInFullscreen);
   subscribeToCustomStyles();
   await purgeExpiredKeys();

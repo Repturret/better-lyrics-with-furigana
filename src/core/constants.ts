@@ -15,6 +15,11 @@ export const ANIMATING_CLASS = "blyrics--animating" as const;
 export const PAUSED_CLASS = "blyrics--paused" as const;
 export const PRE_ANIMATING_CLASS = "blyrics--pre-animating" as const;
 export const USER_SCROLLING_CLASS = "blyrics-user-scrolling" as const;
+export const LINE_CLASS = "blyrics--line" as const;
+export const BREAK_CLASS = "blyrics--break" as const;
+export const INSTRUMENTAL_CLASS = "blyrics--instrumental" as const;
+export const SEEK_HOVER_CLASS = "blyrics--seek-hover" as const;
+export const COPIED_TOAST_CLASS = "blyrics--copied-toast" as const;
 export const TRANSLATED_LYRICS_CLASS = "blyrics--translated" as const;
 export const ROMANIZED_LYRICS_CLASS = "blyrics--romanized" as const;
 export const FOOTER_CLASS = "blyrics-footer" as const;
@@ -62,8 +67,8 @@ export const THEME_STORE_TURNSTILE_URL = `${THEME_STORE_API_URL}/turnstile` as c
 const THEME_REGISTRY_BASE = "https://raw.githubusercontent.com/better-lyrics/themes" as const;
 export const THEME_REGISTRY_URL = `${THEME_REGISTRY_BASE}/master` as const;
 export const THEME_DISCUSSIONS_URL = "https://github.com/better-lyrics/themes/discussions" as const;
-export const TRANSLATE_LYRICS_URL = function (lang: string, text: string): string {
-  return `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${lang}&dt=t&q=${encodeURIComponent(text)}`;
+export const TRANSLATE_LYRICS_URL = function (lang: string, text: string, sourceLang = "auto"): string {
+  return `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang || "auto"}&tl=${lang}&dt=t&q=${encodeURIComponent(text)}`;
 };
 export const TRANSLATE_IN_ROMAJI = function (lang: string, text: string): string {
   return `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${lang}&tl=${lang}-Latn&dt=t&dt=rm&q=${encodeURIComponent(text)}`;

@@ -51,7 +51,17 @@
 	--blyrics-font-weight: 700;
 	--blyrics-line-height: 1.333;
 
-	--blyrics-translated-font-size: 2rem;
+	--blyrics-translated-font-size: 2.1rem;
+	--blyrics-translated-opacity: 0.51;
+	--blyrics-translated-inactive-opacity: 0.45;
+	--blyrics-translated-fade-duration: 1.1s;
+	--blyrics-romanized-font-size: 1.25rem;
+	--blyrics-furigana-font-size: 0.52em;
+	--blyrics-furigana-inactive-opacity: 0.5;
+	--blyrics-furigana-active-opacity: 0.9;
+	--blyrics-furigana-fade-duration: 0.4s;
+	--blyrics-furigana-gap: 0.75em;
+	--blyrics-romanized-opacity: 0.85;
 	--blyrics-translated-font-weight: 600;
 	--blyrics-translated-font-family: var(--blyrics-font-family);
 	--blyrics-translated-color: color(
@@ -80,10 +90,18 @@
 	--blyrics-wobble-duration: 1s;
 
 	/* Layout */
+	/* Width of the seek bar's flex slot; also how far the text shifts when the
+	   bar opens on hover (it is the same box). */
+	--blyrics-seek-gutter-width: 1.5rem;
+	--blyrics-seek-gutter-bar-width: 0.09em;
+	--blyrics-seek-gutter-bar-opacity: 0.75;
+	--blyrics-seek-gutter-transition-duration: 0.22s;
+	--blyrics-seek-gutter-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
 	--blyrics-padding: 2rem;
 	--blyrics-margin: 2rem;
 	--blyrics-small-border-radius: 1rem;
 	--blyrics-border-radius: 1000rem;
+	--blyrics-album-art-size: 800px;
 
 	/* Effects */
 	--blyrics-blur-amount: 30px;
