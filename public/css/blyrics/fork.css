@@ -34,6 +34,12 @@
 	margin-top: 0.35em;
 	opacity: var(--blyrics-translated-inactive-opacity);
 	transition: opacity var(--blyrics-translated-fade-duration) ease-in-out;
+	/*
+	 * The core's entry animation fills forwards, and a filled animation on opacity outranks the
+	 * transition above, so the brightness would flip instead of fading. Backwards fill keeps the
+	 * entry fade-in and lets go once it is done.
+	 */
+	animation-fill-mode: backwards;
 }
 
 .blyrics--active .blyrics--translated {
