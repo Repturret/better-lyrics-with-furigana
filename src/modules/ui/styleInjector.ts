@@ -29,6 +29,11 @@ function withLetterWaveSetting(css: string): string {
   }
 }
 
+// Fork: unsynced lyrics scroll down once and stay at the bottom instead of wrapping back to the
+// top. The core cycles bottom pause -> reset -> top pause, so an endless bottom pause is the same
+// thing. It goes after the theme, so it is the last word.
+const NO_PASSIVE_SCROLL_WRAP = "/* blyrics-passive-scroll-bottom-pause-s = 999999; */";
+
 /**
  * Hands a compiled theme to the side panel's view, which parses the `blyrics-*` config out of it,
  * applies the stylesheet to this document and reports whether the lines have to be built again.
@@ -36,7 +41,8 @@ function withLetterWaveSetting(css: string): string {
  * compressed, and compiling the RICS source it is written in.
  */
 export function applyCustomStyles(css: string): void {
-  const needsLyricReload = mainView.setTheme(withLetterWaveSetting(css));
+  const needsLyricReload = mainView.setTheme(`${withLetterWaveSetting(css)}
+${NO_PASSIVE_SCROLL_WRAP}`);
   publishPictureInPictureLyrics();
 
   if (needsLyricReload) {

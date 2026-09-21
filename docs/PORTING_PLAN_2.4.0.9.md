@@ -180,9 +180,10 @@ git checkout -b port/2.4.0.9 v2.4.0.9     # 이식은 새 브랜치에서
 - 구현 메모: 업스트림 `translation.ts`에 Unison 번역(`enrichViaUnison`)이 추가돼 Google 앞에서 먼저 호출된다. 3-way 병합 때 Unison 캐시 키도 `cacheKeyFor`로 통일했다. NUL은 `` 이스케이프로 대체. LLM 통합은 `forkTranslation.ts`(`runLlmTranslationPass`)로 분리하고 `injectLyrics.ts`에는 훅만 추가. 후리가나 관련 로마자 게이팅(`songIsJapanese`)은 Phase 4에서 함께 처리.
 - 완료 기준: Best 모드에서 번역이 Google → LLM → 수정 순으로 교체되고, 실패 시 앞 단계가 유지된다. 설정 화면 재오픈 후 값 유지.
 
-### Phase 3 — 표시 설정 (S~M)
+### Phase 3 — 표시 설정 (S~M) — 코드 완료(브라우저 실측 대기)
 
-- [ ] `fork.css` 신설(변수 기본값 포함), 싱크 없음 밝게(6), 자동 스크롤(7), 앨범 커버(8), 번역 밝기(13).
+- [x] `fork.css` 신설(변수 기본값 포함), 싱크 없음 밝게(6), 자동 스크롤(7), 앨범 커버(8), 번역 밝기(13).
+- 구현 메모: `fork.css`는 `index.css`가 마지막에 import(PiP에도 실림). 자동 스크롤은 `styleInjector.ts`가 테마 뒤에 `blyrics-passive-scroll-bottom-pause-s = 999999` 주석을 붙이는 방식(코어 무수정). 로마자 스타일(위쪽 배치, 박스 제거)은 후리가나 레이아웃과 함께 Phase 4에서 결정. 앨범 아트 CSS는 Phase 2에서 처리됨.
 - 완료 기준: 싱크 없는 가사 전체가 밝게 보이고 자동 스크롤이 맨 아래에서 유지된다.
 
 ### Phase 4 — 후리가나 (L)
