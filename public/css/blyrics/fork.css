@@ -124,6 +124,7 @@
 	--blyrics-seek-gutter-bar-width: 0.09em;
 	--blyrics-seek-gutter-bar-opacity: 0.75;
 	--blyrics-seek-gutter-transition-duration: 0.22s;
+	--blyrics-seek-gutter-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /*
@@ -169,6 +170,33 @@
 .blyrics--line.blyrics--seek-hover .blyrics-line-main::before {
 	opacity: var(--blyrics-seek-gutter-bar-opacity);
 	background-image: linear-gradient(var(--blyrics-lyric-active-color), var(--blyrics-lyric-active-color));
+}
+
+/*
+ * The words slide aside on hover to open the gap the bar sits in - otherwise the bar would paint
+ * straight over the first letters instead of hanging off their edge. Only .blyrics-line-main's own
+ * two runs (the highlight overlay and the real text) move; the translation/romanization/furigana
+ * rows are separate rows already clear of the bar and are left alone. lineInteractions.ts's own
+ * measurements (isInSeekGutter, placeGutterBar) undo this shift before comparing against it, so the
+ * hit zone and the bar stay put while a line is hovered instead of chasing the sliding text.
+ */
+.blyrics-container:not([data-sync="none"])
+	> .blyrics--line:not([data-instrumental="true"])
+	.blyrics-line-main
+	> * {
+	translate: 0;
+	transition: translate var(--blyrics-seek-gutter-transition-duration) var(--blyrics-seek-gutter-transition-easing);
+}
+
+.blyrics--line.blyrics--seek-hover .blyrics-line-main > * {
+	translate: var(--blyrics-seek-gutter-width);
+}
+
+.blyrics--line[data-agent="v2"].blyrics--seek-hover .blyrics-line-main > *,
+.blyrics--line[data-agent="v3"].blyrics--seek-hover .blyrics-line-main > *,
+.blyrics--line[data-direction="rtl"].blyrics--seek-hover .blyrics-line-main > *,
+.blyrics--line.blyrics-rtl.blyrics--seek-hover .blyrics-line-main > * {
+	translate: calc(-1 * var(--blyrics-seek-gutter-width));
 }
 
 /* Toast shown after selected lyrics are copied to the clipboard. */

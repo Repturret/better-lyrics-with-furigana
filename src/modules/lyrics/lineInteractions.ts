@@ -57,21 +57,37 @@ function gutterWidthPx(lineElement: HTMLElement): number {
  * seek target, the zone widens by SEEK_HOVER_WIDEN_FACTOR (hysteresis) so it takes a more
  * deliberate move away to drop out of hover than it took to enter it.
  */
-export function isInSeekGutter(lineElement: HTMLElement, clientX: number): boolean {
-  if (lineElement.dataset.instrumental === "true") {
-    // No text to reserve a gutter against - the whole line is a seek target.
-    return true;
-  }
+interface TextEdges {
+  rect: DOMRect;
+  scale: number;
+  /** True once hovering slides the words aside by one gutter width to open the bar's gap - the
+   *  rects below are measured live, so they already reflect that shift and need it undone before
+   *  comparing against the (unmoved) bar or clientX. */
+  slidPx: number;
+  textLeft: number;
+  textRight: number;
+  rightAligned: boolean;
+}
 
+/** Right-aligned lines (RTL, or secondary/tertiary duet vocals) hang the gutter off the trailing
+ *  edge; everything else off the leading (left) edge. */
+function isRightAligned(lineElement: HTMLElement): boolean {
+  const view = lineElement.ownerDocument.defaultView;
+  return (
+    lineElement.classList.contains(RTL_CLASS) ||
+    view?.getComputedStyle(lineElement).textAlign === "right" ||
+    lineElement.dataset.agent === "v2" ||
+    lineElement.dataset.agent === "v3"
+  );
+}
+
+/** Where a line's own sung text actually starts and ends, in viewport px - not the highlight
+ *  overlay, and not any romanization / translation row (which also holds `.blyrics--word`). */
+function measureTextEdges(lineElement: HTMLElement): TextEdges | null {
   const rect = lineElement.getBoundingClientRect();
-  if (rect.width === 0) return false;
-
+  if (rect.width === 0) return null;
   const scale = lineElement.offsetWidth > 0 ? rect.width / lineElement.offsetWidth : 1;
-  const gutter = gutterWidthPx(lineElement) * scale;
-  if (gutter <= 0) return false;
 
-  // Real text extent: the main lyric's own words, not the highlight overlay or the romanization /
-  // translation rows (which also hold .blyrics--word).
   let textLeft = rect.left;
   let textRight = rect.right;
   const words = [...lineElement.querySelectorAll<HTMLElement>(`.${WORD_CLASS}:not(.${WORD_HIGHLIGHT_CLASS})`)].filter(
@@ -92,14 +108,34 @@ export function isInSeekGutter(lineElement: HTMLElement, clientX: number): boole
     }
   }
 
-  // Right-aligned lines (RTL, or secondary/tertiary duet vocals) hang the gutter off the trailing
-  // edge; everything else off the leading (left) edge.
-  const view = lineElement.ownerDocument.defaultView;
-  const rightAligned =
-    lineElement.classList.contains(RTL_CLASS) ||
-    view?.getComputedStyle(lineElement).textAlign === "right" ||
-    lineElement.dataset.agent === "v2" ||
-    lineElement.dataset.agent === "v3";
+  const rightAligned = isRightAligned(lineElement);
+  const isHovering = lineElement.classList.contains(SEEK_HOVER_CLASS);
+  // On hover the words are already translated one gutter-width away to open the gap the bar sits
+  // in (see fork.css); undo that here so the edges line up with the bar's (unmoved) own position.
+  const slidPx = isHovering ? gutterWidthPx(lineElement) * scale : 0;
+  if (rightAligned) {
+    textLeft -= slidPx;
+    textRight -= slidPx;
+  } else {
+    textLeft += slidPx;
+    textRight += slidPx;
+  }
+
+  return { rect, scale, slidPx, textLeft, textRight, rightAligned };
+}
+
+export function isInSeekGutter(lineElement: HTMLElement, clientX: number): boolean {
+  if (lineElement.dataset.instrumental === "true") {
+    // No text to reserve a gutter against - the whole line is a seek target.
+    return true;
+  }
+
+  const edges = measureTextEdges(lineElement);
+  if (!edges) return false;
+  const { rect, scale, textLeft, textRight, rightAligned } = edges;
+
+  const gutter = gutterWidthPx(lineElement) * scale;
+  if (gutter <= 0) return false;
 
   const isHovering = lineElement.classList.contains(SEEK_HOVER_CLASS);
   const hitZone = isHovering ? gutter * SEEK_HOVER_WIDEN_FACTOR : gutter;
@@ -115,40 +151,12 @@ export function isInSeekGutter(lineElement: HTMLElement, clientX: number): boole
 
 /** Positions the (otherwise invisible) gutter bar against the line's real text edge on hover. */
 function placeGutterBar(lineElement: HTMLElement): void {
-  const rect = lineElement.getBoundingClientRect();
-  if (rect.width === 0) return;
-  const scale = lineElement.offsetWidth > 0 ? rect.width / lineElement.offsetWidth : 1;
-  if (scale <= 0) return;
-
-  const words = [...lineElement.querySelectorAll<HTMLElement>(`.${WORD_CLASS}:not(.${WORD_HIGHLIGHT_CLASS})`)].filter(
-    word => !word.closest(`.${ROMANIZED_LYRICS_CLASS}, .${TRANSLATED_LYRICS_CLASS}`)
-  );
-  let left = rect.left;
-  let right = rect.right;
-  if (words.length) {
-    let lo = Number.POSITIVE_INFINITY;
-    let hi = Number.NEGATIVE_INFINITY;
-    for (const word of words) {
-      const wordRect = word.getBoundingClientRect();
-      if (wordRect.width === 0) continue;
-      lo = Math.min(lo, wordRect.left);
-      hi = Math.max(hi, wordRect.right);
-    }
-    if (lo !== Number.POSITIVE_INFINITY) {
-      left = lo;
-      right = hi;
-    }
-  }
-
-  const view = lineElement.ownerDocument.defaultView;
-  const rightAligned =
-    lineElement.classList.contains(RTL_CLASS) ||
-    view?.getComputedStyle(lineElement).textAlign === "right" ||
-    lineElement.dataset.agent === "v2" ||
-    lineElement.dataset.agent === "v3";
+  const edges = measureTextEdges(lineElement);
+  if (!edges || edges.scale <= 0) return;
+  const { rect, scale, textLeft, textRight, rightAligned } = edges;
 
   const gutter = gutterWidthPx(lineElement);
-  const x = rightAligned ? (right - rect.left) / scale : (left - rect.left) / scale - gutter;
+  const x = rightAligned ? (textRight - rect.left) / scale : (textLeft - rect.left) / scale - gutter;
   lineElement.style.setProperty(GUTTER_X_PROPERTY, `${x}px`);
 }
 
