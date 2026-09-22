@@ -37,11 +37,11 @@ const SEEK_HOVER_WIDEN_FACTOR = 1.6;
 /** CSS custom property the gutter bar reads its position from; set per hover, in the line's own
  *  unscaled pixels (see fork.css). */
 const GUTTER_X_PROPERTY = "--blyrics-seek-gutter-x";
-/** Matches fork.css's `--blyrics-seek-gutter-width: 1.5rem`. Kept as a plain number here rather
+/** Matches fork.css's `--blyrics-seek-gutter-width: 2.25rem`. Kept as a plain number here rather
  *  than read back off the custom property: getComputedStyle returns a custom property's authored
  *  string as-is ("1.5rem"), not its resolved length, so parsing it as a number silently produced
  *  ~1.5px instead of ~24px and made the gutter (and its hover hysteresis) imperceptible. */
-const SEEK_GUTTER_WIDTH_REM = 1.5;
+const SEEK_GUTTER_WIDTH_REM = 2.25;
 
 function gutterWidthPx(lineElement: HTMLElement): number {
   const doc = lineElement.ownerDocument;
@@ -380,9 +380,15 @@ export function attachLineInteractions(container: HTMLElement): void {
     if (hoveredLine !== line) {
       clearHover();
       hoveredLine = line;
+      // Measured before the hover class goes on, while the text still sits at its rest (unslid)
+      // position, and not again for the rest of this hover: the bar then sits still while the CSS
+      // slide (fork.css) carries the text away from it over its own transition. Re-measuring on
+      // every mousemove instead - live word rects mid-slide, "corrected" by a fixed full-slide
+      // guess - made the bar visibly chase the transition (and the mouse, since that is what was
+      // triggering the re-measurement) for its ~200ms duration.
+      placeGutterBar(line);
       line.classList.add(SEEK_HOVER_CLASS);
     }
-    placeGutterBar(line);
   });
 
   container.addEventListener("mouseleave", clearHover);
