@@ -120,7 +120,7 @@
 /* -- Seek gutter / text selection & copy ----------------------------------- */
 
 :root {
-	--blyrics-seek-gutter-width: 1.5em;
+	--blyrics-seek-gutter-width: 0.5em;
 	--blyrics-seek-gutter-bar-width: 0.15em;
 	--blyrics-seek-gutter-bar-opacity: 0.75;
 	--blyrics-seek-gutter-transition-duration: 0.22s;

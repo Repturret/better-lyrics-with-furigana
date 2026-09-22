@@ -14,6 +14,7 @@ import {
   COPIED_TOAST_CLASS,
   HIGHLIGHT_RUN_CLASS,
   LINE_CLASS,
+  LINE_MAIN_CLASS,
   LOG_PREFIX,
   LYRICS_CLASS,
   ROMANIZED_LYRICS_CLASS,
@@ -37,7 +38,7 @@ const SEEK_HOVER_WIDEN_FACTOR = 1.6;
 /** CSS custom property the gutter bar reads its position from; set per hover, in the line's own
  *  unscaled pixels (see fork.css). */
 const GUTTER_X_PROPERTY = "--blyrics-seek-gutter-x";
-/** Matches fork.css's `--blyrics-seek-gutter-width: 1.5em` and `--blyrics-seek-gutter-bar-width:
+/** Matches fork.css's `--blyrics-seek-gutter-width: 0.5em` and `--blyrics-seek-gutter-bar-width:
  *  0.15em`. Both are `em`, sized off the line's own font-size (uniform across every line - the
  *  `transform: scale(...)` core dims an inactive line by is a render-time transform, not a
  *  font-size change, so `em` doesn't drift between an active and an inactive line). Kept as plain
@@ -45,7 +46,7 @@ const GUTTER_X_PROPERTY = "--blyrics-seek-gutter-x";
  *  property's authored string as-is ("1.5em"), not its resolved length, so parsing it as a number
  *  silently produced ~1.5px instead of a real em's worth of pixels and made the gutter (and its
  *  hover hysteresis) imperceptible. */
-const SEEK_GUTTER_WIDTH_EM = 1.5;
+const SEEK_GUTTER_WIDTH_EM = 0.5;
 const SEEK_GUTTER_BAR_WIDTH_EM = 0.15;
 
 function lineFontSizePx(lineElement: HTMLElement): number {
@@ -79,7 +80,12 @@ function gutterBarWidthPx(lineElement: HTMLElement): number {
  * again until a different line is entered.
  */
 interface TextEdges {
-  rect: DOMRect;
+  /** `.blyrics-line-main`'s own box - not the outer line's. The gutter bar is that element's
+   *  `::before`, so its `left` is measured from here; using the outer line's (padded) box instead
+   *  was off by that padding and, combined with the clamp below, could place the bar outside
+   *  line-main's own box on the side with less to spare - invisible with no error, since nothing
+   *  overflows the outer line's box, just line-main's. */
+  rowRect: DOMRect;
   /** Gutter width in this rect's screen px (already includes the line's own `scale`). */
   gutter: number;
   textLeft: number;
@@ -93,6 +99,7 @@ function isRightAligned(lineElement: HTMLElement): boolean {
   const view = lineElement.ownerDocument.defaultView;
   return (
     lineElement.classList.contains(RTL_CLASS) ||
+    lineElement.dataset.direction === "rtl" ||
     view?.getComputedStyle(lineElement).textAlign === "right" ||
     lineElement.dataset.agent === "v2" ||
     lineElement.dataset.agent === "v3"
@@ -103,14 +110,16 @@ function isRightAligned(lineElement: HTMLElement): boolean {
  *  overlay, and not any romanization / translation row (which also holds `.blyrics--word`). Only
  *  meaningful while the line sits at its rest (unslid) position. */
 function measureTextEdges(lineElement: HTMLElement): TextEdges | null {
-  const rect = lineElement.getBoundingClientRect();
-  if (rect.width === 0) return null;
-  const scale = lineElement.offsetWidth > 0 ? rect.width / lineElement.offsetWidth : 1;
+  const lineMain = lineElement.querySelector<HTMLElement>(`.${LINE_MAIN_CLASS}`);
+  if (!lineMain) return null;
+  const rowRect = lineMain.getBoundingClientRect();
+  if (rowRect.width === 0) return null;
+  const scale = lineMain.offsetWidth > 0 ? rowRect.width / lineMain.offsetWidth : 1;
   const gutter = gutterWidthPx(lineElement) * scale;
   if (gutter <= 0) return null;
 
-  let textLeft = rect.left;
-  let textRight = rect.right;
+  let textLeft = rowRect.left;
+  let textRight = rowRect.right;
   const words = [...lineElement.querySelectorAll<HTMLElement>(`.${WORD_CLASS}:not(.${WORD_HIGHLIGHT_CLASS})`)].filter(
     word => !word.closest(`.${ROMANIZED_LYRICS_CLASS}, .${TRANSLATED_LYRICS_CLASS}`)
   );
@@ -129,16 +138,16 @@ function measureTextEdges(lineElement: HTMLElement): TextEdges | null {
     }
   }
 
-  return { rect, gutter, textLeft, textRight, rightAligned: isRightAligned(lineElement) };
+  return { rowRect, gutter, textLeft, textRight, rightAligned: isRightAligned(lineElement) };
 }
 
 function withinZone(edges: TextEdges, clientX: number, widen: boolean): boolean {
   const hitZone = widen ? edges.gutter * SEEK_HOVER_WIDEN_FACTOR : edges.gutter;
   if (edges.rightAligned) {
-    const outside = Math.min(hitZone, Math.max(0, edges.rect.right - edges.textRight));
+    const outside = Math.min(hitZone, Math.max(0, edges.rowRect.right - edges.textRight));
     return clientX >= edges.textRight - (hitZone - outside) && clientX <= edges.textRight + outside;
   }
-  const outside = Math.min(hitZone, Math.max(0, edges.textLeft - edges.rect.left));
+  const outside = Math.min(hitZone, Math.max(0, edges.textLeft - edges.rowRect.left));
   return clientX >= edges.textLeft - outside && clientX <= edges.textLeft + (hitZone - outside);
 }
 
@@ -157,22 +166,23 @@ export function isInSeekGutter(lineElement: HTMLElement, clientX: number): boole
 
 /** Positions the (otherwise invisible) gutter bar at the given (already-measured) text edge. */
 function placeGutterBar(lineElement: HTMLElement, edges: TextEdges): void {
-  const scale = lineElement.offsetWidth > 0 ? edges.rect.width / lineElement.offsetWidth : 1;
+  const lineMain = lineElement.querySelector<HTMLElement>(`.${LINE_MAIN_CLASS}`);
+  if (!lineMain) return;
+  const scale = lineMain.offsetWidth > 0 ? edges.rowRect.width / lineMain.offsetWidth : 1;
   if (scale <= 0) return;
   const barWidth = gutterBarWidthPx(lineElement) * scale;
   // The bar sits at the far edge of the (narrow) hit zone, clamped to the room actually available
-  // on that side - the common case for ordinary flush-to-the-edge lyrics, on either alignment,
-  // would otherwise place the bar partly or fully past the line's own box edge and clipped away by
-  // whatever ancestor clips overflow there.
+  // on that side within line-main's own box - the common case for ordinary flush-to-the-edge
+  // lyrics, on either alignment, would otherwise place the bar partly or fully outside it.
   let barLeft: number;
   if (edges.rightAligned) {
-    const outside = Math.min(edges.gutter, Math.max(0, edges.rect.right - edges.textRight));
+    const outside = Math.min(edges.gutter, Math.max(0, edges.rowRect.right - edges.textRight));
     barLeft = edges.textRight + outside - barWidth;
   } else {
-    const outside = Math.min(edges.gutter, Math.max(0, edges.textLeft - edges.rect.left));
+    const outside = Math.min(edges.gutter, Math.max(0, edges.textLeft - edges.rowRect.left));
     barLeft = edges.textLeft - outside;
   }
-  const x = (barLeft - edges.rect.left) / scale;
+  const x = (barLeft - edges.rowRect.left) / scale;
   lineElement.style.setProperty(GUTTER_X_PROPERTY, `${x}px`);
 }
 
