@@ -116,3 +116,80 @@
 .blyrics--line:has(.blyrics--furigana) .blyrics--word {
 	margin-top: var(--blyrics-furigana-gap);
 }
+
+/* -- Seek gutter / text selection & copy ----------------------------------- */
+
+:root {
+	--blyrics-seek-gutter-width: 1.5rem;
+	--blyrics-seek-gutter-bar-width: 0.09em;
+	--blyrics-seek-gutter-bar-opacity: 0.75;
+	--blyrics-seek-gutter-transition-duration: 0.22s;
+}
+
+/*
+ * The core makes every line a seek target (cursor: pointer, no text selection). The gutter
+ * restricts a plain click to the line's leading edge; the rest becomes ordinary selectable text.
+ * Instrumental breaks and unsynced ("none") lyrics have nothing to select, so they stay untouched.
+ */
+.blyrics-container:not([data-sync="none"]) > .blyrics--line:not([data-instrumental="true"]) {
+	cursor: text;
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+/*
+ * The bar hangs off the real text edge (JS measures it and sets the position below), not the line
+ * box - duet/RTL lines right-align or centre their words. It sits on .blyrics-line-main, which the
+ * core already positions relatively, so its height tracks just the sung text row, not any
+ * translation/romanization/furigana rows stacked under or over it.
+ */
+.blyrics-container:not([data-sync="none"]) > .blyrics--line:not([data-instrumental="true"]) .blyrics-line-main {
+	position: relative;
+}
+
+.blyrics-container:not([data-sync="none"])
+	> .blyrics--line:not([data-instrumental="true"])
+	.blyrics-line-main::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: var(--blyrics-seek-gutter-x, -9999px);
+	width: var(--blyrics-seek-gutter-bar-width);
+	background-image: linear-gradient(var(--blyrics-lyric-inactive-color), var(--blyrics-lyric-inactive-color));
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--blyrics-seek-gutter-transition-duration) ease;
+}
+
+.blyrics--line.blyrics--seek-hover {
+	cursor: pointer;
+}
+
+.blyrics--line.blyrics--seek-hover .blyrics-line-main::before {
+	opacity: var(--blyrics-seek-gutter-bar-opacity);
+	background-image: linear-gradient(var(--blyrics-lyric-active-color), var(--blyrics-lyric-active-color));
+}
+
+/* Toast shown after selected lyrics are copied to the clipboard. */
+.blyrics--copied-toast {
+	position: fixed;
+	z-index: 10000;
+	pointer-events: none;
+	transform: translate(-50%, -100%);
+	padding: 0.4em 0.8em;
+	border-radius: var(--blyrics-small-border-radius, 1rem);
+	background: var(--blyrics-footer-bg-color, hsla(0, 0%, 100%, 0.1));
+	border: 1px solid var(--blyrics-footer-border-color, hsla(0, 0%, 100%, 0.1));
+	backdrop-filter: blur(12px);
+	color: var(--blyrics-footer-link-color, #fff);
+	font-family: var(--blyrics-footer-font-family);
+	font-size: var(--blyrics-footer-font-size, 14px);
+	font-weight: 500;
+	opacity: 0;
+	transition: opacity 0.15s ease;
+}
+
+.blyrics--copied-toast.blyrics--copied-toast-visible {
+	opacity: 1;
+}

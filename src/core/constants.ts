@@ -4,13 +4,20 @@ import type { LyricSourceKey } from "@modules/lyrics/providers/shared";
 // existing importers keep reaching them through @constants.
 export {
   FOOTER_CLASS,
+  HIGHLIGHT_RUN_CLASS,
   LINE_CLASS,
   LYRICS_CLASS,
   LYRICS_WRAPPER_ID,
   ROMANIZED_LYRICS_CLASS,
+  RTL_CLASS,
   TRANSLATED_LYRICS_CLASS,
+  WORD_CLASS,
   WORD_HIGHLIGHT_CLASS,
 } from "@braccato/core/constants";
+
+// Fork-only class names: no equivalent in the renderer package, so not part of the block above.
+export const SEEK_HOVER_CLASS = "blyrics--seek-hover" as const;
+export const COPIED_TOAST_CLASS = "blyrics--copied-toast" as const;
 
 // DOM Class Names
 export const TAB_HEADER_CLASS = "tab-header style-scope ytmusic-player-page" as const;

@@ -1,4 +1,5 @@
 import {
+  LYRICS_CLASS,
   LYRICS_FOUND_LOG,
   LYRICS_TAB_NOT_DISABLED_LOG,
   NO_LYRICS_FOUND_LOG,
@@ -36,6 +37,7 @@ import {
 } from "@modules/lyrics/furigana";
 import { getLlmConfig, furiganaWithLlm } from "@modules/lyrics/llmTranslation";
 import { runLlmTranslationPass, type LlmTranslationLine } from "@modules/lyrics/forkTranslation";
+import { attachLineInteractions } from "@modules/lyrics/lineInteractions";
 import { lyricsElementAdded, mainView } from "@modules/ui/mainLyricsView";
 import { disableNativeLyricsFocus } from "@modules/ui/nativeLyricsFocus";
 import { publishPictureInPictureLyrics } from "@modules/ui/pictureInPicture/lyricsPublisher";
@@ -171,6 +173,9 @@ function injectLyrics(
   }
 
   mainView.setLyrics(lyrics, { mount: lyricsWrapper, loaderVisible: keepLoaderVisible, noLyrics });
+
+  const lyricsContainer = lyricsWrapper.querySelector<HTMLElement>(`.${LYRICS_CLASS}`);
+  if (lyricsContainer) attachLineInteractions(lyricsContainer);
 
   const syncType: SyncType = mainView.syncType;
   const lines: readonly LineData[] = mainView.lines;

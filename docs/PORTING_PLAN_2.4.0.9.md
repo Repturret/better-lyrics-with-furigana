@@ -193,9 +193,10 @@ git checkout -b port/2.4.0.9 v2.4.0.9     # 이식은 새 브랜치에서
 - 구현 메모: `furigana.ts`(순수 로직+kuromoji, UtaTen 오버라이드 제거)와 `furiganaDom.ts`(세계 무관 DOM/스윕)로 분리. 단어 요소는 `LineData.parts[].lyricElement`(`data-content`)에서 얻고, 글자 위치는 TreeWalker+Range라 글자 모드에서도 동작. 스윕은 `part.animations`의 스윕 애니메이션(keyframe/timing)을 후리가나 하이라이트에 복제(길이·시작 오프셋 안분)하고 rAF로 currentTime/재생상태를 미러링. 글자 모드는 단순 그라디언트로 근사, 줄 싱크 단어는 fade 미러. 로마자 위치/박스 스타일은 업스트림 그대로 유지. 남은 위험: 로마자 배치 요청 캐시 의존, 재레이아웃(창 크기 변경) 시 후리가나 위치 재계산 없음(기존과 동일).
 - 완료 기준: 6절의 후리가나 회귀 케이스 통과, 배경 보컬/오른쪽 정렬/글자 단위 싱크 곡에서 위치가 맞고 스윕이 단어와 같이 진행된다.
 
-### Phase 5 — 시크/복사 (L)
+### Phase 5 — 시크/복사 (L) — 코드 완료(브라우저 실측 대기)
 
-- [ ] 스파이크 B 결과대로 CSS와 캡처 리스너 구성(11). `isInSeekGutter`의 텍스트 범위 측정에서 새 구조의 본문 단어만 대상으로.
+- [x] 스파이크 B 결과대로 CSS와 캡처 리스너 구성(11). `isInSeekGutter`의 텍스트 범위 측정에서 새 구조의 본문 단어만 대상으로.
+- 구현 메모: 코어가 이미 모든 줄에 클릭 시크 리스너를 붙이므로(라인 요소 버블 단계), 별도 시크 구현 없이 컨테이너에 캡처 단계 `click` 리스너를 두어 거터 밖 단일 클릭만 `stopPropagation`으로 가로챈다. 더블클릭(`event.detail >= 2`)과 rich-sync Alt+클릭 단어 시크는 코어 자체 로직과 동일하므로 그대로 통과시킨다. 간주 행(`data-instrumental="true"`)은 거터 제한 없이 전체가 대상, 싱크 없음(`data-sync="none"`)은 코어가 리스너를 아예 안 붙이므로 손대지 않음. v2.3.3의 flex `::before` 트릭은 새 구조(`.blyrics--line`이 flex가 아님)에 안 맞아, 대신 JS가 실제 단어 rect를 측정해 `.blyrics-line-main::before`의 `left`를 CSS 변수로 직접 지정하는 방식으로 다시 만들었다(텍스트가 슬라이드하지 않아도 됨, 기존보다 단순). 복사/토스트/직렬화는 새 클래스명(`WORD_HIGHLIGHT_CLASS`, `HIGHLIGHT_RUN_CLASS`)에 맞춰 조정. `lineInteractions.ts`는 `Document`를 element에서 얻어 world-agnostic하게 작성(Phase 6에서 PiP 재사용 목적).
 - 완료 기준: 거터에서만 시크, 나머지는 선택/복사, 더블클릭 시크, 히스테리시스, 오른쪽 정렬/RTL/간주 행/싱크 없음 행 동작.
 
 ### Phase 6 — PiP 지원 (L)
