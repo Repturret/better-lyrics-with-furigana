@@ -37,11 +37,16 @@ const SEEK_HOVER_WIDEN_FACTOR = 1.6;
 /** CSS custom property the gutter bar reads its position from; set per hover, in the line's own
  *  unscaled pixels (see fork.css). */
 const GUTTER_X_PROPERTY = "--blyrics-seek-gutter-x";
+/** Matches fork.css's `--blyrics-seek-gutter-width: 1.5rem`. Kept as a plain number here rather
+ *  than read back off the custom property: getComputedStyle returns a custom property's authored
+ *  string as-is ("1.5rem"), not its resolved length, so parsing it as a number silently produced
+ *  ~1.5px instead of ~24px and made the gutter (and its hover hysteresis) imperceptible. */
+const SEEK_GUTTER_WIDTH_REM = 1.5;
 
 function gutterWidthPx(lineElement: HTMLElement): number {
-  const view = lineElement.ownerDocument.defaultView;
-  const px = parseFloat(view?.getComputedStyle(lineElement).getPropertyValue("--blyrics-seek-gutter-width") ?? "");
-  return Number.isFinite(px) && px > 0 ? px : 24;
+  const doc = lineElement.ownerDocument;
+  const rootFontSize = parseFloat(doc.defaultView?.getComputedStyle(doc.documentElement).fontSize ?? "");
+  return SEEK_GUTTER_WIDTH_REM * (Number.isFinite(rootFontSize) && rootFontSize > 0 ? rootFontSize : 16);
 }
 
 /**
@@ -339,6 +344,13 @@ export function attachLineInteractions(container: HTMLElement): void {
     },
     true
   );
+
+  // A double (or triple) click seeks - the core's own click handling, let through above - but the
+  // browser's native word/line selection that the same click made is left behind; drop it so it
+  // doesn't linger as a highlighted block or get mistaken for a copy-drag on the next mouseup.
+  container.addEventListener("dblclick", () => {
+    doc.defaultView?.getSelection()?.removeAllRanges();
+  });
 
   let hoveredLine: HTMLElement | null = null;
   const clearHover = (): void => {
