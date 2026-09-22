@@ -131,8 +131,14 @@
  * The core makes every line a seek target (cursor: pointer, no text selection). The gutter
  * restricts a plain click to the line's leading edge; the rest becomes ordinary selectable text.
  * Instrumental breaks and unsynced ("none") lyrics have nothing to select, so they stay untouched.
+ *
+ * The container/instrumental guards below are wrapped in :where() everywhere in this section so
+ * they add no specificity of their own: without that, a "seek-hover" rule (one more class than the
+ * rest-state rule it overrides) would lose to it whenever the guards made the rest-state selector
+ * the longer, more specific one - which is exactly what silently happened here on the first pass
+ * (the bar and the slide never lost their `display: none`-equivalent rest values on hover).
  */
-.blyrics-container:not([data-sync="none"]) > .blyrics--line:not([data-instrumental="true"]) {
+:where(.blyrics-container:not([data-sync="none"])) > .blyrics--line:not([data-instrumental="true"]) {
 	cursor: text;
 	-webkit-user-select: text;
 	user-select: text;
@@ -144,13 +150,7 @@
  * core already positions relatively, so its height tracks just the sung text row, not any
  * translation/romanization/furigana rows stacked under or over it.
  */
-.blyrics-container:not([data-sync="none"]) > .blyrics--line:not([data-instrumental="true"]) .blyrics-line-main {
-	position: relative;
-}
-
-.blyrics-container:not([data-sync="none"])
-	> .blyrics--line:not([data-instrumental="true"])
-	.blyrics-line-main::before {
+.blyrics--line:not([data-instrumental="true"]) .blyrics-line-main::before {
 	content: "";
 	position: absolute;
 	top: 0;
@@ -180,10 +180,7 @@
  * measurements (isInSeekGutter, placeGutterBar) undo this shift before comparing against it, so the
  * hit zone and the bar stay put while a line is hovered instead of chasing the sliding text.
  */
-.blyrics-container:not([data-sync="none"])
-	> .blyrics--line:not([data-instrumental="true"])
-	.blyrics-line-main
-	> * {
+.blyrics--line:not([data-instrumental="true"]) .blyrics-line-main > * {
 	translate: 0;
 	transition: translate var(--blyrics-seek-gutter-transition-duration) var(--blyrics-seek-gutter-transition-easing);
 }
