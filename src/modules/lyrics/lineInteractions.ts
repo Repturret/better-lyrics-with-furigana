@@ -37,16 +37,29 @@ const SEEK_HOVER_WIDEN_FACTOR = 1.6;
 /** CSS custom property the gutter bar reads its position from; set per hover, in the line's own
  *  unscaled pixels (see fork.css). */
 const GUTTER_X_PROPERTY = "--blyrics-seek-gutter-x";
-/** Matches fork.css's `--blyrics-seek-gutter-width: 1.6875rem`. Kept as a plain number here rather
- *  than read back off the custom property: getComputedStyle returns a custom property's authored
- *  string as-is ("1.5rem"), not its resolved length, so parsing it as a number silently produced
- *  ~1.5px instead of ~24px and made the gutter (and its hover hysteresis) imperceptible. */
-const SEEK_GUTTER_WIDTH_REM = 1.6875;
+/** Matches fork.css's `--blyrics-seek-gutter-width: 1.5em` and `--blyrics-seek-gutter-bar-width:
+ *  0.15em`. Both are `em`, sized off the line's own font-size (uniform across every line - the
+ *  `transform: scale(...)` core dims an inactive line by is a render-time transform, not a
+ *  font-size change, so `em` doesn't drift between an active and an inactive line). Kept as plain
+ *  numbers here rather than read back off the custom properties: getComputedStyle returns a custom
+ *  property's authored string as-is ("1.5em"), not its resolved length, so parsing it as a number
+ *  silently produced ~1.5px instead of a real em's worth of pixels and made the gutter (and its
+ *  hover hysteresis) imperceptible. */
+const SEEK_GUTTER_WIDTH_EM = 1.5;
+const SEEK_GUTTER_BAR_WIDTH_EM = 0.15;
+
+function lineFontSizePx(lineElement: HTMLElement): number {
+  const view = lineElement.ownerDocument.defaultView;
+  const px = parseFloat(view?.getComputedStyle(lineElement).fontSize ?? "");
+  return Number.isFinite(px) && px > 0 ? px : 16;
+}
 
 function gutterWidthPx(lineElement: HTMLElement): number {
-  const doc = lineElement.ownerDocument;
-  const rootFontSize = parseFloat(doc.defaultView?.getComputedStyle(doc.documentElement).fontSize ?? "");
-  return SEEK_GUTTER_WIDTH_REM * (Number.isFinite(rootFontSize) && rootFontSize > 0 ? rootFontSize : 16);
+  return SEEK_GUTTER_WIDTH_EM * lineFontSizePx(lineElement);
+}
+
+function gutterBarWidthPx(lineElement: HTMLElement): number {
+  return SEEK_GUTTER_BAR_WIDTH_EM * lineFontSizePx(lineElement);
 }
 
 /**
@@ -146,16 +159,20 @@ export function isInSeekGutter(lineElement: HTMLElement, clientX: number): boole
 function placeGutterBar(lineElement: HTMLElement, edges: TextEdges): void {
   const scale = lineElement.offsetWidth > 0 ? edges.rect.width / lineElement.offsetWidth : 1;
   if (scale <= 0) return;
-  // Clamped the same way the (narrow) hit zone is: a line with little or no room on its gutter
-  // side - the common case for ordinary left-flush lyrics, which start almost flush against the
-  // line's own box - would otherwise place the bar at a negative offset, off past the line's own
-  // left edge and clipped away by whatever ancestor clips overflow there. Clamping to the edge
-  // keeps the bar exactly over the strip that is actually clickable, however wide that turns out
-  // to be, rather than past it.
-  const leftOutside = Math.min(edges.gutter, Math.max(0, edges.textLeft - edges.rect.left));
-  const x = edges.rightAligned
-    ? (edges.textRight - edges.rect.left) / scale
-    : (edges.textLeft - leftOutside - edges.rect.left) / scale;
+  const barWidth = gutterBarWidthPx(lineElement) * scale;
+  // The bar sits at the far edge of the (narrow) hit zone, clamped to the room actually available
+  // on that side - the common case for ordinary flush-to-the-edge lyrics, on either alignment,
+  // would otherwise place the bar partly or fully past the line's own box edge and clipped away by
+  // whatever ancestor clips overflow there.
+  let barLeft: number;
+  if (edges.rightAligned) {
+    const outside = Math.min(edges.gutter, Math.max(0, edges.rect.right - edges.textRight));
+    barLeft = edges.textRight + outside - barWidth;
+  } else {
+    const outside = Math.min(edges.gutter, Math.max(0, edges.textLeft - edges.rect.left));
+    barLeft = edges.textLeft - outside;
+  }
+  const x = (barLeft - edges.rect.left) / scale;
   lineElement.style.setProperty(GUTTER_X_PROPERTY, `${x}px`);
 }
 
