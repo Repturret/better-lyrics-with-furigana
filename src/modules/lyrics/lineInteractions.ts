@@ -50,20 +50,25 @@ function gutterWidthPx(lineElement: HTMLElement): number {
 }
 
 /**
- * Returns true when the pointer sits inside a line's seek gutter: the strip roughly one
- * gutter-width wide hanging off the leading edge of the line's text. The text edge - not the line
- * box edge - is what matters, because duet lines and RTL right-align or centre their words.
- * Everything past the gutter is reserved for text selection. While the line is already the hovered
- * seek target, the zone widens by SEEK_HOVER_WIDEN_FACTOR (hysteresis) so it takes a more
- * deliberate move away to drop out of hover than it took to enter it.
+ * The pointer sits inside a line's seek gutter when it is within roughly one gutter-width of the
+ * leading edge of the line's text. The text edge - not the line box edge - is what matters, because
+ * duet lines and RTL right-align or centre their words. Everything past the gutter is reserved for
+ * text selection.
+ *
+ * Once a line is the hovered seek target, fork.css slides its words aside by one gutter-width to
+ * open the bar's gap, over its own ~220ms transition. That ruled out re-measuring the DOM on every
+ * mousemove to track the zone: a live measurement taken mid-transition, "corrected" by a guess of
+ * how far the slide had gotten, drifted for the whole transition - which both chased the bar under
+ * the pointer instead of holding it still, and (worse) could momentarily place the zone outside the
+ * pointer's own position right after entry, snapping the hover straight back off. So a line's edges
+ * are measured exactly once, at the instant the pointer first crosses into its (unslid, still
+ * narrow) gutter, and cached for as long as it stays the hovered line; nothing here reads the DOM
+ * again until a different line is entered.
  */
 interface TextEdges {
   rect: DOMRect;
-  scale: number;
-  /** True once hovering slides the words aside by one gutter width to open the bar's gap - the
-   *  rects below are measured live, so they already reflect that shift and need it undone before
-   *  comparing against the (unmoved) bar or clientX. */
-  slidPx: number;
+  /** Gutter width in this rect's screen px (already includes the line's own `scale`). */
+  gutter: number;
   textLeft: number;
   textRight: number;
   rightAligned: boolean;
@@ -81,12 +86,15 @@ function isRightAligned(lineElement: HTMLElement): boolean {
   );
 }
 
-/** Where a line's own sung text actually starts and ends, in viewport px - not the highlight
- *  overlay, and not any romanization / translation row (which also holds `.blyrics--word`). */
+/** Where a line's own sung text starts and ends right now, in viewport px - not the highlight
+ *  overlay, and not any romanization / translation row (which also holds `.blyrics--word`). Only
+ *  meaningful while the line sits at its rest (unslid) position. */
 function measureTextEdges(lineElement: HTMLElement): TextEdges | null {
   const rect = lineElement.getBoundingClientRect();
   if (rect.width === 0) return null;
   const scale = lineElement.offsetWidth > 0 ? rect.width / lineElement.offsetWidth : 1;
+  const gutter = gutterWidthPx(lineElement) * scale;
+  if (gutter <= 0) return null;
 
   let textLeft = rect.left;
   let textRight = rect.right;
@@ -108,55 +116,40 @@ function measureTextEdges(lineElement: HTMLElement): TextEdges | null {
     }
   }
 
-  const rightAligned = isRightAligned(lineElement);
-  const isHovering = lineElement.classList.contains(SEEK_HOVER_CLASS);
-  // On hover the words are already translated one gutter-width away to open the gap the bar sits
-  // in (see fork.css); undo that here so the edges line up with the bar's (unmoved) own position.
-  const slidPx = isHovering ? gutterWidthPx(lineElement) * scale : 0;
-  if (rightAligned) {
-    textLeft -= slidPx;
-    textRight -= slidPx;
-  } else {
-    textLeft += slidPx;
-    textRight += slidPx;
-  }
-
-  return { rect, scale, slidPx, textLeft, textRight, rightAligned };
+  return { rect, gutter, textLeft, textRight, rightAligned: isRightAligned(lineElement) };
 }
 
+function withinZone(edges: TextEdges, clientX: number, widen: boolean): boolean {
+  const hitZone = widen ? edges.gutter * SEEK_HOVER_WIDEN_FACTOR : edges.gutter;
+  if (edges.rightAligned) {
+    const outside = Math.min(hitZone, Math.max(0, edges.rect.right - edges.textRight));
+    return clientX >= edges.textRight - (hitZone - outside) && clientX <= edges.textRight + outside;
+  }
+  const outside = Math.min(hitZone, Math.max(0, edges.textLeft - edges.rect.left));
+  return clientX >= edges.textLeft - outside && clientX <= edges.textLeft + (hitZone - outside);
+}
+
+/**
+ * A fresh (narrow, non-widened) gutter test against a line's current, live position. Only valid to
+ * call on a line that is not already the hovered target - see the module doc comment above.
+ */
 export function isInSeekGutter(lineElement: HTMLElement, clientX: number): boolean {
   if (lineElement.dataset.instrumental === "true") {
     // No text to reserve a gutter against - the whole line is a seek target.
     return true;
   }
-
   const edges = measureTextEdges(lineElement);
-  if (!edges) return false;
-  const { rect, scale, textLeft, textRight, rightAligned } = edges;
-
-  const gutter = gutterWidthPx(lineElement) * scale;
-  if (gutter <= 0) return false;
-
-  const isHovering = lineElement.classList.contains(SEEK_HOVER_CLASS);
-  const hitZone = isHovering ? gutter * SEEK_HOVER_WIDEN_FACTOR : gutter;
-
-  if (rightAligned) {
-    const outside = Math.min(hitZone, Math.max(0, rect.right - textRight));
-    return clientX >= textRight - (hitZone - outside) && clientX <= textRight + outside;
-  }
-
-  const outside = Math.min(hitZone, Math.max(0, textLeft - rect.left));
-  return clientX >= textLeft - outside && clientX <= textLeft + (hitZone - outside);
+  return !!edges && withinZone(edges, clientX, false);
 }
 
-/** Positions the (otherwise invisible) gutter bar against the line's real text edge on hover. */
-function placeGutterBar(lineElement: HTMLElement): void {
-  const edges = measureTextEdges(lineElement);
-  if (!edges || edges.scale <= 0) return;
-  const { rect, scale, textLeft, textRight, rightAligned } = edges;
-
+/** Positions the (otherwise invisible) gutter bar at the given (already-measured) text edge. */
+function placeGutterBar(lineElement: HTMLElement, edges: TextEdges): void {
+  const scale = lineElement.offsetWidth > 0 ? edges.rect.width / lineElement.offsetWidth : 1;
+  if (scale <= 0) return;
   const gutter = gutterWidthPx(lineElement);
-  const x = rightAligned ? (textRight - rect.left) / scale : (textLeft - rect.left) / scale - gutter;
+  const x = edges.rightAligned
+    ? (edges.textRight - edges.rect.left) / scale
+    : (edges.textLeft - edges.rect.left) / scale - gutter;
   lineElement.style.setProperty(GUTTER_X_PROPERTY, `${x}px`);
 }
 
@@ -341,14 +334,38 @@ export function attachLineInteractions(container: HTMLElement): void {
   const doc = container.ownerDocument;
   ensureDocumentSelectionListeners(doc);
 
+  let hoveredLine: HTMLElement | null = null;
+  // The one DOM measurement taken for `hoveredLine`, back when it was still at rest - see the big
+  // comment above `TextEdges`. Every hit-test against the currently hovered line re-checks the
+  // pointer against this cached rect; none of them touch the (sliding) DOM again.
+  let hoveredEdges: TextEdges | null = null;
+
+  const clearHover = (): void => {
+    if (hoveredLine) {
+      hoveredLine.classList.remove(SEEK_HOVER_CLASS);
+      hoveredLine = null;
+      hoveredEdges = null;
+    }
+  };
+
   container.addEventListener(
     "click",
     event => {
       const line = (event.target as HTMLElement | null)?.closest?.(`.${LINE_CLASS}`) as HTMLElement | null;
       if (!line || line.dataset.instrumental === "true" || bypassesGutter(container, event)) return;
-      if (hasActiveTextSelection(doc) || !isInSeekGutter(line, event.clientX)) {
+      if (hasActiveTextSelection(doc)) {
         event.stopPropagation();
+        return;
       }
+      // The common case: the click lands on the line the hover state already confirmed is the
+      // target, so trust that rather than re-measuring a line whose words may be mid-slide.
+      // Anything else (no preceding mousemove - e.g. a fast click, or a touch/synthetic event)
+      // falls back to a fresh, narrow check.
+      const inGutter =
+        line === hoveredLine && hoveredEdges
+          ? withinZone(hoveredEdges, event.clientX, true)
+          : isInSeekGutter(line, event.clientX);
+      if (!inGutter) event.stopPropagation();
     },
     true
   );
@@ -360,35 +377,30 @@ export function attachLineInteractions(container: HTMLElement): void {
     doc.defaultView?.getSelection()?.removeAllRanges();
   });
 
-  let hoveredLine: HTMLElement | null = null;
-  const clearHover = (): void => {
-    if (hoveredLine) {
-      hoveredLine.classList.remove(SEEK_HOVER_CLASS);
-      hoveredLine = null;
-    }
-  };
-
   container.addEventListener("mousemove", event => {
     if (container.dataset.sync === "none") return;
     const line = (event.target as HTMLElement | null)?.closest?.(`.${LINE_CLASS}`) as HTMLElement | null;
 
-    if (!line || !isInSeekGutter(line, event.clientX)) {
-      clearHover();
+    if (line && line === hoveredLine) {
+      // Same line as last time: judge purely off the cached rest-state edges, widened for
+      // hysteresis. Never re-measure the DOM here - the words are mid-slide for up to ~220ms after
+      // entry, and "correcting" a live read for how far that slide has gotten was exactly what
+      // made the bar chase the pointer, and briefly kicked the pointer back out of the zone right
+      // after entry.
+      if (!hoveredEdges || !withinZone(hoveredEdges, event.clientX, true)) clearHover();
       return;
     }
 
-    if (hoveredLine !== line) {
-      clearHover();
-      hoveredLine = line;
-      // Measured before the hover class goes on, while the text still sits at its rest (unslid)
-      // position, and not again for the rest of this hover: the bar then sits still while the CSS
-      // slide (fork.css) carries the text away from it over its own transition. Re-measuring on
-      // every mousemove instead - live word rects mid-slide, "corrected" by a fixed full-slide
-      // guess - made the bar visibly chase the transition (and the mouse, since that is what was
-      // triggering the re-measurement) for its ~200ms duration.
-      placeGutterBar(line);
-      line.classList.add(SEEK_HOVER_CLASS);
-    }
+    clearHover();
+    if (!line || line.dataset.instrumental === "true") return;
+
+    const edges = measureTextEdges(line);
+    if (!edges || !withinZone(edges, event.clientX, false)) return;
+
+    hoveredLine = line;
+    hoveredEdges = edges;
+    placeGutterBar(line, edges);
+    line.classList.add(SEEK_HOVER_CLASS);
   });
 
   container.addEventListener("mouseleave", clearHover);
