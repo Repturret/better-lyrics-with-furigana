@@ -38,7 +38,7 @@ const SEEK_HOVER_WIDEN_FACTOR = 1.6;
 /** CSS custom property the gutter bar reads its position from; set per hover, in the line's own
  *  unscaled pixels (see fork.css). */
 const GUTTER_X_PROPERTY = "--blyrics-seek-gutter-x";
-/** Matches fork.css's `--blyrics-seek-gutter-width: 0.5em` and `--blyrics-seek-gutter-bar-width:
+/** Matches fork.css's `--blyrics-seek-gutter-width: 0.35em` and `--blyrics-seek-gutter-bar-width:
  *  0.15em`. Both are `em`, sized off the line's own font-size (uniform across every line - the
  *  `transform: scale(...)` core dims an inactive line by is a render-time transform, not a
  *  font-size change, so `em` doesn't drift between an active and an inactive line). Kept as plain
@@ -46,7 +46,7 @@ const GUTTER_X_PROPERTY = "--blyrics-seek-gutter-x";
  *  property's authored string as-is ("1.5em"), not its resolved length, so parsing it as a number
  *  silently produced ~1.5px instead of a real em's worth of pixels and made the gutter (and its
  *  hover hysteresis) imperceptible. */
-const SEEK_GUTTER_WIDTH_EM = 0.5;
+const SEEK_GUTTER_WIDTH_EM = 0.35;
 const SEEK_GUTTER_BAR_WIDTH_EM = 0.15;
 
 function lineFontSizePx(lineElement: HTMLElement): number {
