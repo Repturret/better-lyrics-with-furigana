@@ -33,7 +33,14 @@
 .blyrics--translated {
 	margin-top: 0.35em;
 	opacity: var(--blyrics-translated-inactive-opacity);
-	transition: opacity var(--blyrics-translated-fade-duration) ease-in-out;
+	/* Rest position for the seek-gutter slide below - kept on the same declaration as the opacity
+	 * fade's transition (further down) because `transition` is a shorthand: a second rule setting
+	 * it again for just `translate` would silently drop this row's opacity fade instead of adding
+	 * to it. */
+	translate: 0;
+	transition:
+		opacity var(--blyrics-translated-fade-duration) ease-in-out,
+		translate var(--blyrics-seek-gutter-transition-duration) var(--blyrics-seek-gutter-transition-easing);
 	/*
 	 * The core's entry animation fills forwards, and a filled animation on opacity outranks the
 	 * transition above, so the brightness would flip instead of fading. Backwards fill keeps the
@@ -145,7 +152,7 @@
 
 :root {
 	--blyrics-seek-gutter-width: 0.5em;
-	--blyrics-seek-gutter-bar-width: 0.15em;
+	--blyrics-seek-gutter-bar-width: 0.12em;
 	--blyrics-seek-gutter-bar-opacity: 0.75;
 	--blyrics-seek-gutter-transition-duration: 0.22s;
 	--blyrics-seek-gutter-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
@@ -171,14 +178,20 @@
 /*
  * The bar hangs off the real text edge (JS measures it and sets the position below), not the line
  * box - duet/RTL lines right-align or centre their words. It sits on .blyrics-line-main, which the
- * core already positions relatively, so its height tracks just the sung text row, not any
- * translation/romanization/furigana rows stacked under or over it.
+ * core already positions relatively, so its horizontal placement tracks just the sung text row, not
+ * any translation/romanization row stacked under it.
+ *
+ * Bottom-anchored with a fixed (one line's worth of) height, rather than top:0/bottom:0 spanning
+ * line-main's own box: a furigana line's words carry a margin-top that pushes line-main's own top
+ * edge up to make room for the readings above them (see the margin-top rule above), and anchoring
+ * to that top edge stretched the bar up through the furigana instead of covering just the original
+ * text.
  */
 .blyrics--line:not([data-instrumental="true"]) .blyrics-line-main::before {
 	content: "";
 	position: absolute;
-	top: 0;
 	bottom: 0;
+	height: calc(var(--blyrics-line-height, 1.333) * 1em);
 	left: var(--blyrics-seek-gutter-x, -9999px);
 	width: var(--blyrics-seek-gutter-bar-width);
 	background-image: linear-gradient(var(--blyrics-lyric-inactive-color), var(--blyrics-lyric-inactive-color));
@@ -198,25 +211,39 @@
 
 /*
  * The words slide aside on hover to open the gap the bar sits in - otherwise the bar would paint
- * straight over the first letters instead of hanging off their edge. Only .blyrics-line-main's own
- * two runs (the highlight overlay and the real text) move; the translation/romanization/furigana
- * rows are separate rows already clear of the bar and are left alone. lineInteractions.ts's own
- * measurements (isInSeekGutter, placeGutterBar) undo this shift before comparing against it, so the
- * hit zone and the bar stay put while a line is hovered instead of chasing the sliding text.
+ * straight over the first letters instead of hanging off their edge. .blyrics-line-main's own two
+ * runs (the highlight overlay and the real text) move, and so does the translation row alongside it
+ * (a direct child of the outer line, not of line-main) - romanization/furigana stay level with the
+ * kanji they annotate and are left alone. lineInteractions.ts's own measurements (isInSeekGutter,
+ * placeGutterBar) undo this shift before comparing against it, so the hit zone and the bar stay put
+ * while a line is hovered instead of chasing the sliding text.
  */
 .blyrics--line:not([data-instrumental="true"]) .blyrics-line-main > * {
 	translate: 0;
 	transition: translate var(--blyrics-seek-gutter-transition-duration) var(--blyrics-seek-gutter-transition-easing);
 }
 
-.blyrics--line.blyrics--seek-hover .blyrics-line-main > * {
+/*
+ * .blyrics--translated's own rest `translate: 0` and matching transition live on its base rule near
+ * the top of this file instead of here: `transition` is a shorthand, and a second rule setting it
+ * again just for `translate` would silently replace that rule's opacity-fade transition rather than
+ * add to it. Only the two (equal-specificity, later-declared) hover states below are safe to keep
+ * separate, since a hover overriding a single longhand property (`translate`) cannot clobber it.
+ */
+
+.blyrics--line.blyrics--seek-hover .blyrics-line-main > *,
+.blyrics--line.blyrics--seek-hover > .blyrics--translated {
 	translate: var(--blyrics-seek-gutter-width);
 }
 
 .blyrics--line[data-agent="v2"].blyrics--seek-hover .blyrics-line-main > *,
+.blyrics--line[data-agent="v2"].blyrics--seek-hover > .blyrics--translated,
 .blyrics--line[data-agent="v3"].blyrics--seek-hover .blyrics-line-main > *,
+.blyrics--line[data-agent="v3"].blyrics--seek-hover > .blyrics--translated,
 .blyrics--line[data-direction="rtl"].blyrics--seek-hover .blyrics-line-main > *,
-.blyrics--line.blyrics-rtl.blyrics--seek-hover .blyrics-line-main > * {
+.blyrics--line[data-direction="rtl"].blyrics--seek-hover > .blyrics--translated,
+.blyrics--line.blyrics-rtl.blyrics--seek-hover .blyrics-line-main > *,
+.blyrics--line.blyrics-rtl.blyrics--seek-hover > .blyrics--translated {
 	translate: calc(-1 * var(--blyrics-seek-gutter-width));
 }
 
