@@ -1,5 +1,6 @@
 import { LOG_PREFIX } from "@constants";
 import { logCore as log } from "@core/logger";
+import { getFuriganaOverride } from "@modules/lyrics/furiganaEditing";
 import type { LineData } from "@braccato/core";
 import {
   attachFuriganaRuns,
@@ -568,8 +569,7 @@ function alignKanjiRuns(surface: string, rawReading: string): { offset: number; 
 function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
   let result = runs;
   const claimed: [number, number][] = [];
-  // Longest match wins: 愛してる before 愛して, 一昨日 before 昨日. Song overrides
-  // come first so they win ties against the static table (stable sort).
+  // Longest match wins: 愛してる before 愛して, 一昨日 before 昨日.
   const ordered = [...READING_OVERRIDES].sort((a, b) => b[0].length - a[0].length);
   for (const [key, kStart, kEnd, yomi] of ordered) {
     let idx = fullText.indexOf(key);
@@ -597,6 +597,15 @@ function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
     }
   }
   return result.sort((a, b) => a.start - b.start);
+}
+
+/** The user's own correction (furiganaEditing.ts) always wins - applied last, over everything
+ *  above, exactly on the run it was made for. */
+function applyUserOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
+  return runs.map(run => {
+    const reading = getFuriganaOverride(fullText.slice(run.start, run.end));
+    return reading && reading !== run.reading ? { ...run, reading } : run;
+  });
 }
 
 /**
@@ -674,11 +683,7 @@ function mergeRuns(surface: string, romajiRuns: KanjiRun[], kuromojiRuns: KanjiR
   return out.sort((a, b) => a.start - b.start);
 }
 
-export async function annotateFuriganaFromRomaji(
-  line: LineData,
-  surface: string,
-  romaji: string
-): Promise<boolean> {
+export async function annotateFuriganaFromRomaji(line: LineData, surface: string, romaji: string): Promise<boolean> {
   if (!surface || !romaji || !KANJI_RE.test(surface)) return false;
   if (line.lyricElement.querySelector(`.${FURIGANA_CLASS}`)) return true;
 
@@ -702,7 +707,7 @@ export async function annotateFuriganaFromRomaji(
 
   let runs = kuromojiRuns.length ? mergeRuns(surface, romajiRuns, kuromojiRuns) : romajiRuns;
   if (!runs.length) return false;
-  runs = applyOverrides(surface, runs);
+  runs = applyUserOverrides(surface, applyOverrides(surface, runs));
 
   log(
     LOG_PREFIX,
@@ -790,7 +795,7 @@ export async function annotateFurigana(line: LineData, fullText: string): Promis
     log(LOG_PREFIX, "Furigana tokenisation failed", err);
     return false;
   }
-  runs = applyOverrides(fullText, runs);
+  runs = applyUserOverrides(fullText, applyOverrides(fullText, runs));
 
   log(
     LOG_PREFIX,
@@ -847,7 +852,7 @@ export function applyLlmFurigana(
   fullText: string,
   pairs: { text: string; reading: string }[]
 ): boolean {
-  const runs = runsFromLlmPairs(fullText, pairs);
+  const runs = applyUserOverrides(fullText, runsFromLlmPairs(fullText, pairs));
   if (!runs.length) return false;
 
   const existing = existingReadings(line);

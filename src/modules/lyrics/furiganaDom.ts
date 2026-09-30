@@ -118,6 +118,9 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
     rt.className = FURIGANA_CLASS;
     rt.setAttribute("aria-hidden", "true");
     rt.dataset.reading = run.reading;
+    // The exact kanji this reading sits over, so a manual edit (furiganaEditing.ts) knows what to
+    // key its override on without having to re-derive it from layout.
+    rt.dataset.surface = fullText.slice(run.start, run.end);
     rt.append(run.reading);
     const highlight = doc.createElement("span");
     highlight.className = FURIGANA_HIGHLIGHT_CLASS;
@@ -132,8 +135,8 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
       line,
       part: startSpan.part,
       highlight,
-      offsetFraction: anchorDur > 0 ? runOffsetSec / anchorDur : 0,
-      durationFraction: anchorDur > 0 && runDurSec > 0 ? Math.min(runDurSec / anchorDur, 1) : 1,
+      offsetMs: runOffsetSec * 1000,
+      durationMs: runDurSec > 0 ? runDurSec * 1000 : anchorDur * 1000,
       source: null,
       mirror: null,
     });
@@ -160,6 +163,19 @@ export function markFuriganaSwapped(line: LineData): void {
   for (const el of line.lyricElement.querySelectorAll(`.${FURIGANA_CLASS}`)) el.classList.add(FURIGANA_SWAPPED_CLASS);
 }
 
+/**
+ * Replaces a single reading's text in place (its visible label and its sweep clone), for a manual
+ * correction (furiganaEditing.ts) - the sweep already running on `.blyrics--furigana-hl` keeps
+ * animating the same element, so nothing about the run's timing needs to be rebuilt for this.
+ */
+export function updateFuriganaReading(rt: HTMLElement, reading: string): void {
+  rt.dataset.reading = reading;
+  const label = rt.firstChild;
+  if (label?.nodeType === Node.TEXT_NODE) label.nodeValue = reading;
+  const highlight = rt.querySelector<HTMLElement>(`.${FURIGANA_HIGHLIGHT_CLASS}`);
+  if (highlight) highlight.textContent = reading;
+}
+
 // -- Sweep ------------------------------------------------------------------
 
 /**
@@ -173,8 +189,15 @@ interface SweepEntry {
   line: LineData;
   part: PartData;
   highlight: HTMLElement;
-  offsetFraction: number;
-  durationFraction: number;
+  /** Absolute ms, on `part`'s own animation's clock (ms elapsed since `part` itself started
+   *  singing). Computed once from the run's real span across every word it overlaps, not scaled
+   *  off `part`'s own duration - a run spanning several words (rich-sync often gives one span per
+   *  character, so a 2+-kanji reading commonly does) must keep sweeping once `part`'s own word is
+   *  done, not finish alongside it. `part`'s tracked animations stay alive and its clock keeps
+   *  advancing for as long as the whole line remains active, well past that one word's window, so
+   *  reusing it as the clock for the rest of the run is safe. */
+  offsetMs: number;
+  durationMs: number;
   source: Animation | null;
   mirror: Animation | null;
 }
@@ -207,8 +230,7 @@ function pickSource(part: PartData): PickedSource | null {
 function createMirror(entry: SweepEntry, picked: PickedSource): Animation | null {
   const { animation, kind } = picked;
   const timing = (animation.effect as AnimationEffect).getTiming();
-  const wordMs = kind === "letters" ? entry.part.duration * 1000 : Number(timing.duration) || 0;
-  if (wordMs <= 0 && kind !== "fade") return null;
+  const duration = Math.max(entry.durationMs, 1);
 
   let keyframes: Keyframe[];
   let options: KeyframeAnimationOptions;
@@ -218,17 +240,12 @@ function createMirror(entry: SweepEntry, picked: PickedSource): Animation | null
       { [AMOUNT_START]: -0.2, [AMOUNT_END]: -0.1 },
       { [AMOUNT_START]: 1.4, [AMOUNT_END]: 1.5 },
     ];
-    options = {
-      duration: Math.max(wordMs * entry.durationFraction, 1),
-      delay: wordMs * entry.offsetFraction,
-      easing: "linear",
-      fill: "both",
-    };
+    options = { duration, delay: entry.offsetMs, easing: "linear", fill: "both" };
   } else if (kind === "swipe") {
     keyframes = keyframesOf(animation);
     options = {
-      duration: Math.max(wordMs * entry.durationFraction, 1),
-      delay: Number(timing.delay ?? 0) + wordMs * entry.offsetFraction,
+      duration,
+      delay: Number(timing.delay ?? 0) + entry.offsetMs,
       easing: timing.easing,
       fill: "both",
     };

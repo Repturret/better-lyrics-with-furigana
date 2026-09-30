@@ -46,7 +46,9 @@
 	opacity: 1;
 }
 
-/* Per-word furigana (Japanese kana reading), hung above the word. */
+/* Per-word furigana (Japanese kana reading), hung above the word. Double-click to correct one
+ * (furiganaEditing.ts) - pointer-events is re-enabled just for this small label, everywhere else
+ * above the line stays click-through. */
 .blyrics--furigana {
 	position: absolute;
 	left: 0; /* per-run: inline left = horizontal centre of the kanji run */
@@ -55,13 +57,35 @@
 	font-weight: 400;
 	line-height: 1;
 	white-space: nowrap;
-	pointer-events: none;
+	pointer-events: auto;
+	cursor: text;
 	-webkit-user-select: none;
 	user-select: none;
 	color: var(--blyrics-lyric-inactive-color);
 	opacity: var(--blyrics-furigana-inactive-opacity);
 	transform: translate(-50%, 0.15em);
 	transition: opacity var(--blyrics-furigana-fade-duration) ease;
+}
+
+/* Takes a reading's exact place while it is being edited - same box, so nothing around it reflows. */
+.blyrics--furigana-editing {
+	position: absolute;
+	left: 0;
+	bottom: 100%;
+	transform: translate(-50%, 0.15em);
+	z-index: 2;
+	box-sizing: content-box;
+	width: 3em;
+	font: inherit;
+	font-size: var(--blyrics-furigana-font-size);
+	line-height: 1;
+	text-align: center;
+	color: var(--blyrics-lyric-active-color);
+	background: color-mix(in srgb, canvas 85%, transparent);
+	border: 1px solid var(--blyrics-lyric-active-color);
+	border-radius: 0.2em;
+	padding: 0.05em 0.2em;
+	outline: none;
 }
 
 /* Readings replaced by the AI pass fade in over the ones they replace. */

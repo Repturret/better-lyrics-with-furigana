@@ -384,6 +384,13 @@ export function attachLineInteractions(container: HTMLElement): void {
   container.addEventListener(
     "click",
     event => {
+      // A reading is editable (furiganaEditing.ts), not a seek target - never let a click or
+      // double-click on it through to the core's own per-line seek, even from bypassesGutter's
+      // double-click-anywhere allowance.
+      if ((event.target as HTMLElement | null)?.closest?.(`.${FURIGANA_CLASS}`)) {
+        event.stopPropagation();
+        return;
+      }
       const line = (event.target as HTMLElement | null)?.closest?.(`.${LINE_CLASS}`) as HTMLElement | null;
       if (!line || line.dataset.instrumental === "true" || bypassesGutter(container, event)) return;
       if (hasActiveTextSelection(doc)) {

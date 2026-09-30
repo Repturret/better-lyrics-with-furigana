@@ -37,6 +37,7 @@ import {
 } from "@modules/lyrics/furigana";
 import { getLlmConfig, furiganaWithLlm } from "@modules/lyrics/llmTranslation";
 import { runLlmTranslationPass, type LlmTranslationLine } from "@modules/lyrics/forkTranslation";
+import { attachFuriganaEditing } from "@modules/lyrics/furiganaEditing";
 import { attachLineInteractions } from "@modules/lyrics/lineInteractions";
 import { lyricsElementAdded, mainView } from "@modules/ui/mainLyricsView";
 import { disableNativeLyricsFocus } from "@modules/ui/nativeLyricsFocus";
@@ -175,7 +176,10 @@ function injectLyrics(
   mainView.setLyrics(lyrics, { mount: lyricsWrapper, loaderVisible: keepLoaderVisible, noLyrics });
 
   const lyricsContainer = lyricsWrapper.querySelector<HTMLElement>(`.${LYRICS_CLASS}`);
-  if (lyricsContainer) attachLineInteractions(lyricsContainer);
+  if (lyricsContainer) {
+    attachLineInteractions(lyricsContainer);
+    attachFuriganaEditing(lyricsContainer);
+  }
 
   const syncType: SyncType = mainView.syncType;
   const lines: readonly LineData[] = mainView.lines;

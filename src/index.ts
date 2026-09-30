@@ -4,6 +4,7 @@ import { injectI18nCssVars, loadLocaleOverride, subscribeToLocaleChanges } from 
 import { purgeExpiredKeys, saveCacheInfo } from "@core/storage";
 import { prewarmAuthenticationToken } from "@modules/lyrics/providers/unified";
 import { initProviders } from "@modules/lyrics/providers/shared";
+import { loadFuriganaOverrides } from "@modules/lyrics/furiganaEditing";
 import { setupRequestSniffer } from "@modules/lyrics/requestSniffer/requestSniffer";
 import {
   handleSettings,
@@ -72,6 +73,7 @@ async function modify(isDisposed: () => boolean): Promise<void> {
   loadLyricOffsetSettings();
   loadPassiveScrollSetting();
   loadAlbumArtSizeSetting();
+  loadFuriganaOverrides();
   loadDockSettings(hideDockOnIdleInFullscreen);
   subscribeToCustomStyles();
   await purgeExpiredKeys();
