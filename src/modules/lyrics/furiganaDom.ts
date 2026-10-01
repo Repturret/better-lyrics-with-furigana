@@ -95,24 +95,30 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
       kanjiWidthPx = Math.max(0, last.right - first.left);
     }
 
-    // How long the sweep should take: the time to sing just this run's kanji, pro-rated out of
-    // every word the run overlaps (the reading of 旅立 must not sweep at the speed of 旅立つ).
-    let runDurSec = 0;
+    // One segment per word the run overlaps, each with its own absolute start (song-seconds) and
+    // share of the singing time, pro-rated out of that word's own duration (the reading of 旅立
+    // must not sweep at the speed of 旅立つ, nor 思い出's 出 light up together with 思). Kept
+    // separate rather than summed into one offset/duration against the anchor word alone: rich-sync
+    // often gives one word span per character, so a 2+-kanji run routinely crosses several, and each
+    // word's own tracked animation only lives for as long as that one word does - the sweep has to
+    // be able to move on to the next word's own clock once the current one's is gone.
+    const segments: { part: PartData; segStartSec: number; segDurSec: number }[] = [];
     for (const sp of spans) {
       const lo = Math.max(sp.start, run.start);
       const hi = Math.min(sp.end, run.end);
       if (hi <= lo) continue;
       const spanChars = sp.end - sp.start;
-      if (spanChars > 0 && sp.part.duration > 0) runDurSec += (sp.part.duration * (hi - lo)) / spanChars;
+      if (spanChars <= 0 || sp.part.duration <= 0) continue;
+      segments.push({
+        part: sp.part,
+        segStartSec: sp.part.time + (sp.part.duration * (lo - sp.start)) / spanChars,
+        segDurSec: (sp.part.duration * (hi - lo)) / spanChars,
+      });
     }
-
-    // When the sweep starts, relative to the word the reading hangs on: the time to sing whatever
-    // precedes the run's first kanji inside that word (pro-rated). A word timed as one span, like
-    // 思い出 or お願い, would otherwise light 出 / 願 up together with 思 / お.
-    const anchorChars = startSpan.end - startSpan.start;
-    const anchorDur = startSpan.part.duration;
-    const runOffsetSec =
-      anchorChars > 0 && anchorDur > 0 ? (anchorDur * Math.max(0, run.start - startSpan.start)) / anchorChars : 0;
+    if (!segments.length) {
+      segments.push({ part: startSpan.part, segStartSec: startSpan.part.time, segDurSec: startSpan.part.duration });
+    }
+    segments.sort((a, b) => a.segStartSec - b.segStartSec);
 
     const rt = doc.createElement("span");
     rt.className = FURIGANA_CLASS;
@@ -133,10 +139,10 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
 
     trackSweep(doc, {
       line,
-      part: startSpan.part,
       highlight,
-      offsetMs: runOffsetSec * 1000,
-      durationMs: runDurSec > 0 ? runDurSec * 1000 : anchorDur * 1000,
+      segments,
+      runStartSec: segments[0].segStartSec,
+      totalDurSec: segments.reduce((sum, s) => sum + s.segDurSec, 0),
     });
   }
 
@@ -179,28 +185,33 @@ export function updateFuriganaReading(rt: HTMLElement, reading: string): void {
 /**
  * The core sweeps a word's highlight with a Web Animation it keeps in `PartData.animations`. A
  * reading cannot ride that animation directly: it sweeps only over its own kanji, at its own offset
- * within the word, and a run commonly spans several words besides (rich-sync often gives one word
- * span per character, so a 2+-kanji reading routinely does). So this reads that animation's
- * `currentTime` - which, however many words the run spans, means "ms elapsed since `part` itself
- * started singing", continuously, for as long as the line stays active, well past that one word's
- * own window - and recomputes the reading's fill fraction from scratch every frame, writing it
- * straight onto the highlight clone's `--lyric-transition-amount-*` custom properties.
+ * within the word. Worse, a run commonly spans several separate words (rich-sync often gives one
+ * word span per character, so a 2+-kanji reading routinely does), and `PartData.animations` only
+ * lives for as long as that one word's own singing window does - once a word is done, the core clears
+ * it, so a run anchored on its first word's clock alone goes silent exactly where that word's own
+ * share of the reading ends (every 全部 stalling at ぜん, right on the 全/部 boundary, was this).
  *
- * Earlier this cloned a second Animation and kept it in step with the source's `currentTime`,
- * snapping it back on drift past a tolerance. Two clocks that are each only approximately kept in
- * sync is exactly the shape of bug this showed: multi-span runs stalling partway, or finishing the
- * instant the source's own word did. Recomputing directly from the one real clock every frame has
- * nothing left to drift from it, and reading a paused or seeked animation's `currentTime` already
- * gives the right answer with no pause/seek handling of our own needed.
+ * So each word the run overlaps gets its own `SweepSegment` (its own absolute start, in song
+ * seconds, and its own share of the run's duration), and every frame this tries them newest first,
+ * reads whichever one currently has a live animation to find "now" in song time, and recomputes the
+ * run's overall fill fraction from scratch against that - never advancing a clock of our own that
+ * could fall out of step with the real one, and free to move on to a later word's clock the moment
+ * an earlier one's goes away.
  */
+interface SweepSegment {
+  part: PartData;
+  /** This segment's own share of the run, in absolute song-seconds (same basis as `part.time`). */
+  segStartSec: number;
+  segDurSec: number;
+}
+
 interface SweepEntry {
   line: LineData;
-  part: PartData;
   highlight: HTMLElement;
-  /** Absolute ms, on `part`'s own animation's clock (ms elapsed since `part` itself started
-   *  singing), marking where in that clock this reading's own sweep is active. */
-  offsetMs: number;
-  durationMs: number;
+  /** One per word the run overlaps, oldest first. */
+  segments: SweepSegment[];
+  runStartSec: number;
+  totalDurSec: number;
 }
 
 interface SweepRegistry {
@@ -236,15 +247,37 @@ function pickSource(part: PartData): PickedSource | null {
 
 /** 0 (not yet reached) to 1 (fully sung) fraction of this reading's own run, read straight off the
  *  anchor word's real animation - never a value we keep state of ourselves. */
-function sweepProgress(entry: SweepEntry, picked: PickedSource): number {
+/** Seconds elapsed since `part` itself started singing, or `null` when it has nothing live to read
+ *  right now - either it hasn't been reached yet, or (for a word earlier in a multi-word run) its
+ *  own tracked animations were already cleared once its own singing window ended. */
+function elapsedSecForPart(part: PartData): number | null {
+  const picked = pickSource(part);
+  if (!picked) return null;
   const elapsedMs = Number(picked.animation.currentTime ?? 0);
   if (picked.kind === "fade") {
-    // Line-synced word: the opacity animation is a 1ms before/after switch, not a sweep - the
-    // reading just matches whichever side of it the word is currently on.
-    return elapsedMs >= 0 ? 1 : 0;
+    // Line-synced word: the opacity animation is a 1ms before/after switch, not a sweep - treat it
+    // as either not started or fully done.
+    return elapsedMs >= 0 ? part.duration : -1;
   }
-  if (entry.durationMs <= 0) return elapsedMs >= entry.offsetMs ? 1 : 0;
-  return Math.min(Math.max((elapsedMs - entry.offsetMs) / entry.durationMs, 0), 1);
+  return elapsedMs / 1000;
+}
+
+/**
+ * 0 (not yet reached) to 1 (fully sung), or `null` when no segment has anything live to read right
+ * now (the caller then leaves the reading at whatever it last showed). Tried newest segment first:
+ * once an earlier word's own clock goes away, the run's progress has to come from whichever later
+ * word is now the one actually singing, not freeze at the point where the earlier word stopped.
+ */
+function sweepProgress(entry: SweepEntry): number | null {
+  for (let i = entry.segments.length - 1; i >= 0; i--) {
+    const seg = entry.segments[i];
+    const elapsedSec = elapsedSecForPart(seg.part);
+    if (elapsedSec === null) continue;
+    const songPosSec = seg.part.time + elapsedSec;
+    if (entry.totalDurSec <= 0) return songPosSec >= entry.runStartSec ? 1 : 0;
+    return Math.min(Math.max((songPosSec - entry.runStartSec) / entry.totalDurSec, 0), 1);
+  }
+  return null;
 }
 
 function applySweepProgress(highlight: HTMLElement, progress: number): void {
@@ -256,9 +289,8 @@ function applySweepProgress(highlight: HTMLElement, progress: number): void {
 }
 
 function syncSweep(entry: SweepEntry): void {
-  const picked = pickSource(entry.part);
-  if (!picked) return;
-  applySweepProgress(entry.highlight, sweepProgress(entry, picked));
+  const progress = sweepProgress(entry);
+  if (progress !== null) applySweepProgress(entry.highlight, progress);
 }
 
 function trackSweep(doc: Document, entry: SweepEntry): void {
