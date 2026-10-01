@@ -137,8 +137,6 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
       highlight,
       offsetMs: runOffsetSec * 1000,
       durationMs: runDurSec > 0 ? runDurSec * 1000 : anchorDur * 1000,
-      source: null,
-      mirror: null,
     });
   }
 
@@ -179,27 +177,30 @@ export function updateFuriganaReading(rt: HTMLElement, reading: string): void {
 // -- Sweep ------------------------------------------------------------------
 
 /**
- * The core sweeps a word's highlight with Web Animations it keeps in `PartData.animations`. A
- * reading cannot ride that: it sweeps only over its own kanji, at its own offset in the word. So
- * each reading gets an animation of its own on its highlight clone, copied from the word's (same
- * keyframes, timing scaled to the reading's share) and kept on the word's clock: current time,
- * play state and rate are mirrored every frame while the line is animating.
+ * The core sweeps a word's highlight with a Web Animation it keeps in `PartData.animations`. A
+ * reading cannot ride that animation directly: it sweeps only over its own kanji, at its own offset
+ * within the word, and a run commonly spans several words besides (rich-sync often gives one word
+ * span per character, so a 2+-kanji reading routinely does). So this reads that animation's
+ * `currentTime` - which, however many words the run spans, means "ms elapsed since `part` itself
+ * started singing", continuously, for as long as the line stays active, well past that one word's
+ * own window - and recomputes the reading's fill fraction from scratch every frame, writing it
+ * straight onto the highlight clone's `--lyric-transition-amount-*` custom properties.
+ *
+ * Earlier this cloned a second Animation and kept it in step with the source's `currentTime`,
+ * snapping it back on drift past a tolerance. Two clocks that are each only approximately kept in
+ * sync is exactly the shape of bug this showed: multi-span runs stalling partway, or finishing the
+ * instant the source's own word did. Recomputing directly from the one real clock every frame has
+ * nothing left to drift from it, and reading a paused or seeked animation's `currentTime` already
+ * gives the right answer with no pause/seek handling of our own needed.
  */
 interface SweepEntry {
   line: LineData;
   part: PartData;
   highlight: HTMLElement;
   /** Absolute ms, on `part`'s own animation's clock (ms elapsed since `part` itself started
-   *  singing). Computed once from the run's real span across every word it overlaps, not scaled
-   *  off `part`'s own duration - a run spanning several words (rich-sync often gives one span per
-   *  character, so a 2+-kanji reading commonly does) must keep sweeping once `part`'s own word is
-   *  done, not finish alongside it. `part`'s tracked animations stay alive and its clock keeps
-   *  advancing for as long as the whole line remains active, well past that one word's window, so
-   *  reusing it as the clock for the rest of the run is safe. */
+   *  singing), marking where in that clock this reading's own sweep is active. */
   offsetMs: number;
   durationMs: number;
-  source: Animation | null;
-  mirror: Animation | null;
 }
 
 interface SweepRegistry {
@@ -207,11 +208,14 @@ interface SweepRegistry {
   running: boolean;
 }
 
-type PickedSource = { animation: Animation; kind: "swipe" | "letters" | "fade" };
+type SweepKind = "swipe" | "letters" | "fade";
+type PickedSource = { animation: Animation; kind: SweepKind };
 
 const registries = new WeakMap<Document, SweepRegistry>();
-/** A mirror this far from its source, in ms, is snapped back onto it. */
-const DRIFT_TOLERANCE_MS = 40;
+const AMOUNT_START_FROM = -0.2;
+const AMOUNT_START_TO = 1.4;
+const AMOUNT_END_FROM = -0.1;
+const AMOUNT_END_TO = 1.5;
 
 function keyframesOf(animation: Animation): Keyframe[] {
   const effect = animation.effect as KeyframeEffect | null;
@@ -220,6 +224,9 @@ function keyframesOf(animation: Animation): Keyframe[] {
 
 function pickSource(part: PartData): PickedSource | null {
   if (part.animations.length === 0) return null;
+  // Every per-letter sub-animation is set to the same word-elapsed `currentTime` as a swipe
+  // animation would be (see startRichSyncedHighlightAnimations), so the first one reads the same
+  // way; letters just render as a plain gradient instead of the mask sweep they can't borrow.
   if (part.highlightLetterElements?.length) return { animation: part.animations[0], kind: "letters" };
   const swipe = part.animations.find(a => keyframesOf(a).some(frame => AMOUNT_START in frame && !("opacity" in frame)));
   if (swipe) return { animation: swipe, kind: "swipe" };
@@ -227,70 +234,31 @@ function pickSource(part: PartData): PickedSource | null {
   return fade ? { animation: fade, kind: "fade" } : null;
 }
 
-function createMirror(entry: SweepEntry, picked: PickedSource): Animation | null {
-  const { animation, kind } = picked;
-  const timing = (animation.effect as AnimationEffect).getTiming();
-  const duration = Math.max(entry.durationMs, 1);
-
-  let keyframes: Keyframe[];
-  let options: KeyframeAnimationOptions;
-  if (kind === "letters") {
-    // Letters reveal through masks, which a reading has none of: sweep the plain gradient instead.
-    keyframes = [
-      { [AMOUNT_START]: -0.2, [AMOUNT_END]: -0.1 },
-      { [AMOUNT_START]: 1.4, [AMOUNT_END]: 1.5 },
-    ];
-    options = { duration, delay: entry.offsetMs, easing: "linear", fill: "both" };
-  } else if (kind === "swipe") {
-    keyframes = keyframesOf(animation);
-    options = {
-      duration,
-      delay: Number(timing.delay ?? 0) + entry.offsetMs,
-      easing: timing.easing,
-      fill: "both",
-    };
-  } else {
-    // Line-synced word: the highlight only fades in, whole; the reading fades with it.
-    keyframes = keyframesOf(animation).map(frame => ({ ...frame, [AMOUNT_START]: 1.4, [AMOUNT_END]: 1.5 }));
-    options = {
-      duration: Number(timing.duration) || 1,
-      delay: Number(timing.delay ?? 0),
-      easing: timing.easing,
-      fill: "both",
-    };
+/** 0 (not yet reached) to 1 (fully sung) fraction of this reading's own run, read straight off the
+ *  anchor word's real animation - never a value we keep state of ourselves. */
+function sweepProgress(entry: SweepEntry, picked: PickedSource): number {
+  const elapsedMs = Number(picked.animation.currentTime ?? 0);
+  if (picked.kind === "fade") {
+    // Line-synced word: the opacity animation is a 1ms before/after switch, not a sweep - the
+    // reading just matches whichever side of it the word is currently on.
+    return elapsedMs >= 0 ? 1 : 0;
   }
+  if (entry.durationMs <= 0) return elapsedMs >= entry.offsetMs ? 1 : 0;
+  return Math.min(Math.max((elapsedMs - entry.offsetMs) / entry.durationMs, 0), 1);
+}
 
-  const mirror = entry.highlight.animate(keyframes, options);
-  mirror.currentTime = Number(animation.currentTime ?? 0);
-  if (animation.playState === "paused") mirror.pause();
-  return mirror;
+function applySweepProgress(highlight: HTMLElement, progress: number): void {
+  highlight.style.setProperty(
+    AMOUNT_START,
+    String(AMOUNT_START_FROM + progress * (AMOUNT_START_TO - AMOUNT_START_FROM))
+  );
+  highlight.style.setProperty(AMOUNT_END, String(AMOUNT_END_FROM + progress * (AMOUNT_END_TO - AMOUNT_END_FROM)));
 }
 
 function syncSweep(entry: SweepEntry): void {
   const picked = pickSource(entry.part);
-  if (!picked) {
-    entry.mirror?.cancel();
-    entry.mirror = null;
-    entry.source = null;
-    return;
-  }
-  const { animation } = picked;
-  if (animation !== entry.source) {
-    entry.mirror?.cancel();
-    entry.source = animation;
-    entry.mirror = createMirror(entry, picked);
-    return;
-  }
-  const mirror = entry.mirror;
-  if (!mirror) return;
-
-  if (mirror.playbackRate !== animation.playbackRate) mirror.playbackRate = animation.playbackRate;
-  const paused = animation.playState === "paused";
-  if (paused && mirror.playState === "running") mirror.pause();
-  else if (!paused && mirror.playState === "paused") mirror.play();
-
-  const target = Number(animation.currentTime ?? 0);
-  if (Math.abs(target - Number(mirror.currentTime ?? 0)) > DRIFT_TOLERANCE_MS) mirror.currentTime = target;
+  if (!picked) return;
+  applySweepProgress(entry.highlight, sweepProgress(entry, picked));
 }
 
 function trackSweep(doc: Document, entry: SweepEntry): void {
@@ -310,12 +278,10 @@ function trackSweep(doc: Document, entry: SweepEntry): void {
     if (!current) return;
     for (const item of current.entries) {
       if (!item.highlight.isConnected) {
-        item.mirror?.cancel();
         current.entries.delete(item);
         continue;
       }
-      // An idle line has nothing to follow; only a mirror still running needs a last look.
-      if (item.line.isAnimating || item.mirror) syncSweep(item);
+      if (item.line.isAnimating) syncSweep(item);
     }
     if (current.entries.size === 0) {
       current.running = false;
