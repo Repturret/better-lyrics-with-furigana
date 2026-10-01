@@ -135,6 +135,17 @@
 }
 
 /*
+ * The container's own top padding (2rem, core's own lyrics.css) has no extra room budgeted for a
+ * reading sitting above the very first line - the margin trick below pulls a furigana line's own
+ * box up by the gap to make room for it, including the first line's, but there is nothing above the
+ * first line to scroll "up" into: at the top of the view, that room sits above the scroll area's own
+ * edge and the reading is clipped there instead. Reserve the room up front instead.
+ */
+.blyrics-container {
+	padding-top: calc(2rem + var(--blyrics-furigana-gap));
+}
+
+/*
  * Room for the readings comes from a top margin on each word, so every wrapped row of a long line
  * gets it, not just the first. The line pulls itself up by the same amount so a furigana line is
  * not spaced differently from its neighbours; the translation row is not a word and is untouched.
