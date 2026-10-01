@@ -95,7 +95,9 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["夜を", 0, 1, "よる"],
   ["夜の", 0, 1, "よる"],
   ["夜だ", 0, 1, "よる"],
-  // 君 + particle is 君 (きみ), not the name suffix 〜君 (くん) Google sometimes hears.
+  // 君 + particle is 君 (きみ), not the name suffix 〜君 (くん) Google sometimes hears. Kept
+  // alongside the bare "君" catch-all below (longest match wins, so these are redundant with it
+  // where they overlap) in case a future edit narrows that one.
   ["君と", 0, 1, "きみ"],
   ["君は", 0, 1, "きみ"],
   ["君が", 0, 1, "きみ"],
@@ -108,6 +110,10 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["君じゃ", 0, 1, "きみ"],
   ["君なら", 0, 1, "きみ"],
   ["君たち", 0, 1, "きみ"],
+  // Bare 君 is always きみ. The name-suffix 〜君 (くん, as in 田中くん) is unaffected: it is always
+  // preceded by another kanji (the name), and applyOverrides already skips a match whose kanji side
+  // touches a neighbouring kanji, so くん continues to come from kuromoji/romaji there untouched.
+  ["君", 0, 1, "きみ"],
   // 寂しい is さみしい far more often than さびしい in lyrics.
   ["寂しい", 0, 1, "さみ"],
   ["寂しく", 0, 1, "さみ"],
