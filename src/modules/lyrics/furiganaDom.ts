@@ -250,16 +250,37 @@ function pickSource(part: PartData): PickedSource | null {
 /** Seconds elapsed since `part` itself started singing, or `null` when it has nothing live to read
  *  right now - either it hasn't been reached yet, or (for a word earlier in a multi-word run) its
  *  own tracked animations were already cleared once its own singing window ended. */
-function elapsedSecForPart(part: PartData): number | null {
+interface SegmentClock {
+  /** Seconds since `part` itself started singing, derived from its own live animation. */
+  elapsedSec: number;
+  /**
+   * How much longer the word's own highlight actually takes to sweep than its nominal singing
+   * duration - themes commonly stretch it well past 1x (the default theme's own karaoke sweep runs
+   * ~1.6x a word's nominal duration, trailing into the next word, plus a small lead-in before it)
+   * for a smoother-looking wipe. `entry.totalDurSec` below is built from nominal durations, so
+   * without this a reading finishes in 1/ratio of the time its kanji's own highlight actually takes
+   * to fill - exactly the "furigana runs ahead" symptom this fixes. Derived from the real animation
+   * actually built for `part` rather than a theme setting this module cannot safely read (reading a
+   * core theme setting by name re-registers it, replacing - and silently breaking - the core's own
+   * live binding to it).
+   */
+  scale: number;
+}
+
+function readSegmentClock(part: PartData): SegmentClock | null {
   const picked = pickSource(part);
   if (!picked) return null;
   const elapsedMs = Number(picked.animation.currentTime ?? 0);
   if (picked.kind === "fade") {
     // Line-synced word: the opacity animation is a 1ms before/after switch, not a sweep - treat it
     // as either not started or fully done.
-    return elapsedMs >= 0 ? part.duration : -1;
+    return { elapsedSec: elapsedMs >= 0 ? part.duration : -1, scale: 1 };
   }
-  return elapsedMs / 1000;
+  const elapsedSec = elapsedMs / 1000;
+  if (picked.kind !== "swipe") return { elapsedSec, scale: 1 };
+  const nominalMs = part.duration * 1000;
+  const realMs = Number((picked.animation.effect as AnimationEffect).getTiming().duration ?? 0);
+  return { elapsedSec, scale: nominalMs > 0 && realMs > 0 ? realMs / nominalMs : 1 };
 }
 
 /**
@@ -271,11 +292,12 @@ function elapsedSecForPart(part: PartData): number | null {
 function sweepProgress(entry: SweepEntry): number | null {
   for (let i = entry.segments.length - 1; i >= 0; i--) {
     const seg = entry.segments[i];
-    const elapsedSec = elapsedSecForPart(seg.part);
-    if (elapsedSec === null) continue;
-    const songPosSec = seg.part.time + elapsedSec;
-    if (entry.totalDurSec <= 0) return songPosSec >= entry.runStartSec ? 1 : 0;
-    return Math.min(Math.max((songPosSec - entry.runStartSec) / entry.totalDurSec, 0), 1);
+    const clock = readSegmentClock(seg.part);
+    if (!clock) continue;
+    const songPosSec = seg.part.time + clock.elapsedSec;
+    const totalDurSec = entry.totalDurSec * clock.scale;
+    if (totalDurSec <= 0) return songPosSec >= entry.runStartSec ? 1 : 0;
+    return Math.min(Math.max((songPosSec - entry.runStartSec) / totalDurSec, 0), 1);
   }
   return null;
 }
