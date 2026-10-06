@@ -256,9 +256,6 @@ async function processBatchTranslationsAndRomanizations(
   const furiganaLines: { index: number; lineData: LineData; text: string }[] = [];
 
   let sourceLanguage = data.language;
-  // Lyrics already in the user's target language need no romanization. The setting stays on, it
-  // just doesn't apply to this song.
-  const isDefaultLanguage = !!sourceLanguage && langCodesMatch(targetTranslationLang, sourceLanguage);
   // One line with kana makes the whole song Japanese even if detection said otherwise (a Japanese
   // song with an English title often reads as "en"), so its kanji-only lines get furigana too.
   const songIsJapanese = lyrics.some(item => !item.isInstrumental && hasKana(item.words));
@@ -272,10 +269,20 @@ async function processBatchTranslationsAndRomanizations(
     const lineData = linesData[index];
     const lyricElement = lineData.lyricElement;
 
-    // Authoring tools stamp a default xml:lang on every file, so a language the script contradicts cannot veto.
+    // Authoring tools stamp a default xml:lang on every file (or the song's language is guessed off
+    // its first line - an English opener on a Korean song reads as "en"), so the stated language
+    // cannot veto a line its own script contradicts. Hangul, kana and the like are unambiguous, so
+    // for those the line's own script stands in for the stated language: a Korean line in a song
+    // labelled "en" is still a Korean line, and the user's Korean block lists apply to it. Han is
+    // shared by Chinese and Japanese, so it can only withdraw the stated language, not replace it.
     const scriptLanguage = detectNonLatinLanguage(item.words);
-    const trustedLanguage =
-      sourceLanguage && scriptLanguage && !langCodesMatch(sourceLanguage, scriptLanguage) ? undefined : sourceLanguage;
+    const scriptContradicts = !!sourceLanguage && !!scriptLanguage && !langCodesMatch(sourceLanguage, scriptLanguage);
+    const scriptIsDecisive = scriptContradicts && scriptLanguage !== "zh";
+    const trustedLanguage = scriptContradicts ? (scriptIsDecisive ? scriptLanguage : undefined) : sourceLanguage;
+    // Lyrics already in the user's target language need no romanization. The setting stays on, it
+    // just doesn't apply to this line.
+    const defaultCheckLanguage = trustedLanguage ?? sourceLanguage;
+    const isDefaultLanguage = !!defaultCheckLanguage && langCodesMatch(targetTranslationLang, defaultCheckLanguage);
 
     // --- Romanization ---
     const isLanguageDisabledForRomanization = !!trustedLanguage && isRomanizationDisabledForLang(trustedLanguage);
@@ -326,7 +333,12 @@ async function processBatchTranslationsAndRomanizations(
     // --- Translation ---
     const isSourceLangDisabled = !!trustedLanguage && isTranslationDisabledForLang(trustedLanguage);
 
-    if (isTranslateEnabled && !isSourceLangDisabled) {
+    // A line whose own script is already the target language has nothing to translate, and pinning the
+    // song's stated language (the wrong one, here) as the source would turn it into nonsense.
+    const isAlreadyTargetLanguage =
+      scriptIsDecisive && !!scriptLanguage && langCodesMatch(targetTranslationLang, scriptLanguage);
+
+    if (isTranslateEnabled && !isSourceLangDisabled && !isAlreadyTargetLanguage) {
       let translationResult: string | null = null;
 
       const matchedLang =
