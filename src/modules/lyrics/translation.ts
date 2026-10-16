@@ -185,7 +185,16 @@ function commitTranslation(
   detectedLanguage: string
 ): void {
   const trimmed = translated?.trim();
-  if (!trimmed || trimmed.toLowerCase() === item.text.toLowerCase()) return;
+  if (!trimmed || trimmed.toLowerCase() === item.text.toLowerCase()) {
+    // Worth a line in the console: this is where a line silently goes untranslated, and the usual
+    // reasons (a wrongly pinned source language, a provider echoing the text back) look identical
+    // on screen.
+    logCore(
+      TRANSLATION_ERROR_LOG,
+      `No usable translation for "${item.text}" (got ${trimmed ? "its own text back" : "nothing"}), detected "${detectedLanguage}"`
+    );
+    return;
+  }
   const result: TranslationResult = { originalLanguage: detectedLanguage || "", translatedText: trimmed };
   cache.translation.set(cacheKeyFor(targetLanguage, item.text), result);
   results[item.index] = result;
@@ -324,7 +333,10 @@ export async function translateBatch(request: TranslateBatchRequest): Promise<Ba
     return true;
   });
   if (toTranslate.length === 0) {
-    return { results, detectedLanguage: sourceLanguage || results.find(r => r !== null)?.originalLanguage || unisonLang || "" };
+    return {
+      results,
+      detectedLanguage: sourceLanguage || results.find(r => r !== null)?.originalLanguage || unisonLang || "",
+    };
   }
 
   // Chunk by request URL length.

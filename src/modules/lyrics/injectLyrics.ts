@@ -249,6 +249,13 @@ async function processBatchTranslationsAndRomanizations(
 
   const romanizationBatch: { index: number; text: string }[] = [];
   const translationBatch: { index: number; text: string }[] = [];
+  // Google's `sl` is pinned to the song's stated language when we know it, which is right only
+  // while that language is right: a song labelled "en" off an English first line, whose other lines
+  // are Japanese, gets those lines "translated" from English - Google hands them back unchanged and
+  // they are then dropped as untranslated. Once any line in a batch contradicts the stated language,
+  // the batch goes out with the source left to Google's own detection instead.
+  let romanizationBatchContradicted = false;
+  let translationBatchContradicted = false;
   // Every translatable line, in order: the "Best" (LLM) pass re-translates the whole song at once.
   const llmTranslationLines: LlmTranslationLine[] = [];
   // Japanese lines get furigana instead of romaji. They still go through the romanization batch,
@@ -296,6 +303,7 @@ async function processBatchTranslationsAndRomanizations(
       furiganaLines.push({ index, lineData, text: item.words });
       if (!item.romanization && !getRomanizationFromCache(item.words)) {
         romanizationBatch.push({ index, text: item.words });
+        if (scriptContradicts) romanizationBatchContradicted = true;
       }
     } else if (isRomanizationEnabled && !isLanguageDisabledForRomanization && !isDefaultLanguage) {
       let romanizedResult: string | null = null;
@@ -325,6 +333,7 @@ async function processBatchTranslationsAndRomanizations(
           const detectedLang = detectNonLatinLanguage(item.words);
           if (!detectedLang || !isRomanizationDisabledForLang(detectedLang)) {
             romanizationBatch.push({ index, text: item.words });
+            if (scriptContradicts) romanizationBatchContradicted = true;
           }
         }
       }
@@ -364,6 +373,7 @@ async function processBatchTranslationsAndRomanizations(
         didInjectCachedContent = true;
       } else if (sourceLanguage !== targetTranslationLang || containsNonLatin(item.words) || !sourceLanguage) {
         translationBatch.push({ index, text: item.words });
+        if (scriptContradicts) translationBatchContradicted = true;
       }
     }
   });
@@ -400,7 +410,7 @@ async function processBatchTranslationsAndRomanizations(
         const response = await romanizeBatch({
           lines: romanizationBatch.map(b => b.text),
           targetLanguage: targetTranslationLang,
-          sourceLanguage: sourceLanguage || undefined,
+          sourceLanguage: romanizationBatchContradicted ? undefined : sourceLanguage || undefined,
           videoId: data.videoId,
           signal,
         });
@@ -441,7 +451,7 @@ async function processBatchTranslationsAndRomanizations(
             next: contextLine(b.index + 1),
           })),
           targetLanguage: targetTranslationLang,
-          sourceLanguage: sourceLanguage || undefined,
+          sourceLanguage: translationBatchContradicted ? undefined : sourceLanguage || undefined,
           videoId: data.videoId,
           signal,
         });
