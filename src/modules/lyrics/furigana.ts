@@ -30,7 +30,7 @@ import KuromojiAnalyzer from "kuroshiro-analyzer-kuromoji";
  * (offline), the romaji reading is used on its own.
  */
 
-const KANA_RE = /[぀-ゟ゠-ヿㇰ-ㇿ]/;
+const KANA_RE = /[぀-ゟァ-ヺーヽヾㇰ-ㇿ]/;
 const KANJI_RE = /[一-龯㐀-䶿豈-﫿々〇〻]/;
 const LATIN_RE = /[a-z]/i;
 
@@ -140,6 +140,10 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["被告人前", 3, 4, "まえ"],
   // 愛おしい is いとおしい (愛 = いと), not あい + おしい.
   ["愛おし", 0, 1, "いと"],
+  // 嗤う (laugh scornfully) is わらう; Google romanizes it as ちい, kuromoji does not know it.
+  ["嗤", 0, 1, "わら"],
+  // 躁 (mania, 躁転) is not in kuromoji's dictionary.
+  ["躁", 0, 1, "そう"],
   ["二人", 0, 2, "ふたり"],
   ["1人", 0, 2, "ひとり"],
   ["2人", 0, 2, "ふたり"],
@@ -514,7 +518,7 @@ function findAnchor(reading: string, kana: string, from: number): number {
 function alignKanjiRuns(surface: string, rawReading: string): { offset: number; end: number; reading: string }[] {
   // Punctuation / spaces / latin that Google passes through the romaji would
   // otherwise land inside a run or break an anchor - keep only kana here.
-  const reading = rawReading.replace(/[^぀-ゟ゠-ヿー]/g, "");
+  const reading = rawReading.replace(/[^぀-ゟァ-ヺーヽヾー]/g, "");
   const runs: { offset: number; end: number; reading: string }[] = [];
   let readIdx = 0;
   let i = 0;
@@ -528,7 +532,7 @@ function alignKanjiRuns(surface: string, rawReading: string): { offset: number; 
       let j = i;
       while (j < surface.length && !isKanjiish(surface[j])) j++;
       const seg = surface.slice(i, j);
-      const kanaSeg = seg.replace(/[^぀-ゟ゠-ヿー]/g, "");
+      const kanaSeg = seg.replace(/[^぀-ゟァ-ヺーヽヾー]/g, "");
       if (kanaSeg) {
         const at = findAnchor(reading, kanaSeg, readIdx);
         if (at !== -1) {
@@ -566,7 +570,7 @@ function alignKanjiRuns(surface: string, rawReading: string): { offset: number; 
         // Stop the chain at a real kana anchor, or at a digit - number+counter
         // readings (1分, 一秒) rendaku unpredictably and Google mangles them, so
         // splitting a chain across one only produces garbage.
-        if (gap.replace(/[^぀-ゟ゠-ヿー]/g, "") || /[0-9０-９]/.test(gap)) break;
+        if (gap.replace(/[^぀-ゟァ-ヺーヽヾー]/g, "") || /[0-9０-９]/.test(gap)) break;
         k = e; // only punctuation / spaces - keep chaining
       }
     }
@@ -578,7 +582,7 @@ function alignKanjiRuns(surface: string, rawReading: string): { offset: number; 
     if (k < surface.length) {
       let e = k;
       while (e < surface.length && !isKanjiish(surface[e])) e++;
-      const kanaSeg = surface.slice(k, e).replace(/[^぀-ゟ゠-ヿー]/g, "");
+      const kanaSeg = surface.slice(k, e).replace(/[^぀-ゟァ-ヺーヽヾー]/g, "");
       // Require at least one kana per kanji before accepting the anchor so a
       // short kana that also occurs inside the reading (月 = つき, then 行き's き)
       // doesn't cut it short.
@@ -598,9 +602,11 @@ function alignKanjiRuns(surface: string, rawReading: string): { offset: number; 
       let take: number;
       if (ci === chain.length - 1) {
         take = span.length - consumed;
-      } else if (anchorIsOkurigana && ci === chain.length - 2) {
+      } else if (anchorIsOkurigana && chain.length === 2 && ci === chain.length - 2) {
         // Leave the okurigana-bound final run just ~1 kana per kanji; the rest
-        // belongs to the compound before it.
+        // belongs to the compound before it. Only for a two-run chain: with more, the earlier runs
+        // are separate words (朝・昼・晩毎食後必ず) and handing the second-to-last everything but the
+        // last run's share shifts every reading after the first.
         take = Math.max(1, span.length - consumed - lastKc);
       } else {
         take = Math.round((span.length * kc) / (totalKanji || 1));

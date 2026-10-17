@@ -40,6 +40,21 @@ function upsertTranslation(doc: Document, lyricElement: HTMLElement, text: strin
   injectTranslation(doc, lyricElement, text);
 }
 
+/**
+ * A "translation" that is still the source line: the model echoed it (often respacing it a little,
+ * so an exact-match check misses it) rather than translating, typically for a line wrapped in 「」
+ * or quotation marks. Judged by script, since the target language's own script is not known here -
+ * mostly kana/Han coming back out for a Japanese line headed to a non-CJK language is untranslated.
+ */
+function looksUntranslated(source: string, translated: string, targetLanguage: string): boolean {
+  const cjkChar = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
+  const cjkChars = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/gu;
+  if (!cjkChar.test(source) || /^(ja|zh)/i.test(targetLanguage)) return false;
+  const letters = translated.match(/\p{L}/gu)?.length ?? 0;
+  const cjk = translated.match(cjkChars)?.length ?? 0;
+  return letters > 0 && cjk / letters > 0.5;
+}
+
 export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<void> {
   const { lines, targetLanguage, isStale, isSameText, signal } = pass;
   if (lines.length === 0 || isStale()) return;
@@ -60,6 +75,7 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   improved.forEach((translated, i) => {
     const line = lines[i];
     if (!translated || line.official || isSameText(translated, line.text)) return;
+    if (looksUntranslated(line.text, translated, targetLanguage)) return;
     apply(line, translated);
     applied++;
   });
@@ -77,6 +93,7 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   let revisedCount = 0;
   revised.forEach((text, i) => {
     if (!text || !drafts[i] || text === drafts[i] || isSameText(text, lines[i].text)) return;
+    if (looksUntranslated(lines[i].text, text, targetLanguage)) return;
     apply(lines[i], text);
     revisedCount++;
   });

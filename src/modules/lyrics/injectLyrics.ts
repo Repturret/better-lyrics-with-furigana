@@ -505,7 +505,13 @@ async function processBatchTranslationsAndRomanizations(
   if (furiganaLines.length > 0) {
     for (const { lineData, text } of furiganaLines) {
       if (isStale()) return;
-      const romaji = getRomanizationFromCache(text);
+      let romaji = getRomanizationFromCache(text);
+      if (!romaji) {
+        // The batch can lose a line (a response Google merged or truncated), and a line with a kanji
+        // kuromoji does not know (躁, 嗤) then has no reading at all. Ask for just this one.
+        await romanizeBatch({ lines: [text], sourceLanguage: "ja", targetLanguage: targetTranslationLang, signal });
+        romaji = getRomanizationFromCache(text);
+      }
       // With romaji: align it and cross-check against kuromoji. Without: kuromoji only. Both
       // no-op if the line already has furigana.
       const done = romaji ? await annotateFuriganaFromRomaji(lineData, text, romaji) : false;

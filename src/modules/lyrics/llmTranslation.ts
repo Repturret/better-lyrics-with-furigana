@@ -82,6 +82,7 @@ function buildPrompt(
     "Translate for meaning and singability, preserving the emotional register and imagery; " +
     "do not translate idioms word-for-word. Keep proper nouns, names and interjections. " +
     "If a line is already in the target language, or is only punctuation/symbols, return it unchanged. " +
+    "Text inside quotation marks or brackets (「」, 『』, “”) is still lyric text and must be translated. " +
     'The input is {"lines": [{"id": 0, "text": "..."}, ...]}. Return ONLY a JSON object of the form ' +
     '{"lines": [{"id": 0, "text": "<translation>"}, ...]} with one entry per input id, using the same ids in the ' +
     "same order. Never merge, split, skip or reorder lines: every id gets the translation of its own text. " +
