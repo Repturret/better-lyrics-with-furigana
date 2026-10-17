@@ -129,6 +129,17 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["後と", 0, 1, "のち"],
   ["後だ", 0, 1, "のち"],
   ["一人", 0, 2, "ひとり"],
+  // A match is skipped when a kanji touches its kanji side (a bigger compound, 一人称), which also
+  // skips 一人 right before a kanji-led word (一人笑える: ひとり + わら). Spell those out with the
+  // following kanji in the key, re-supplying its own reading - a run the override replaces
+  // can have swallowed it (romaji splitting 一人笑 as いち + にんわら).
+  ["一人笑", 0, 2, "ひとり"],
+  ["一人笑", 2, 3, "わら"],
+  // 被告人 is ひこくじん; Google/kuromoji both split the line as 被告 + 人前 (ひこく + ひとまえ).
+  ["被告人前", 0, 3, "ひこくじん"],
+  ["被告人前", 3, 4, "まえ"],
+  // 愛おしい is いとおしい (愛 = いと), not あい + おしい.
+  ["愛おし", 0, 1, "いと"],
   ["二人", 0, 2, "ふたり"],
   ["1人", 0, 2, "ひとり"],
   ["2人", 0, 2, "ふたり"],
@@ -437,13 +448,53 @@ function withParticleAlt(kana: string): string {
   return alt;
 }
 
+const VOWEL_ROWS: ReadonlyArray<readonly [string, string]> = [
+  ["あ", "ぁあかがさざただなはばぱまゃやらゎわ"],
+  ["い", "ぃいきぎしじちぢにひびぴみり"],
+  ["う", "ぅうくぐすずっつづぬふぶぷむゅゆるゔ"],
+  ["え", "ぇえけげせぜてでねへべぺめれ"],
+  ["お", "ぉおこごそぞとどのほぼぽもょよろを"],
+];
+
+function vowelOf(ch: string): string | null {
+  for (const [vowel, row] of VOWEL_ROWS) if (row.includes(ch)) return vowel;
+  return null;
+}
+
+/** `kana` with each ー replaced by the vowel the kana before it lengthens, once with お/え as written
+ *  and once with the う/い they are usually spelled with when lengthened (おう, えい). */
+function choonpuCandidates(kana: string): string[] {
+  const build = (swap: boolean): string => {
+    let out = "";
+    for (const ch of kana) {
+      if (ch !== "ー") {
+        out += ch;
+        continue;
+      }
+      let vowel = vowelOf(out[out.length - 1] ?? "") ?? "";
+      if (swap) vowel = vowel === "お" ? "う" : vowel === "え" ? "い" : vowel;
+      out += vowel;
+    }
+    return out;
+  };
+  return [...new Set([build(false), build(true)])];
+}
+
 function findAnchor(reading: string, kana: string, from: number): number {
   for (const candidate of new Set([kana, withParticleAlt(kana)])) {
     const at = reading.indexOf(candidate, from);
     if (at !== -1) return at;
   }
-  // A chōonpu (ロー vs ロウ) or a dropped one: try the long mark as each vowel.
+  // A chōonpu (ロー vs ロウ) or a dropped one. First give the long mark the vowel its own kana
+  // lengthens (あー is ああ, おー is おお / おう) - trying a fixed list of vowels in order let あー
+  // match the あう inside あ|あう|っとう (ああうっとう) and skip the う that belongs to 鬱陶.
   if (kana.includes("ー")) {
+    for (const candidate of choonpuCandidates(kana)) {
+      for (const alt of new Set([candidate, withParticleAlt(candidate)])) {
+        const at = reading.indexOf(alt, from);
+        if (at !== -1) return at;
+      }
+    }
     for (const rep of ["う", "お", "あ", "い", "え", ""]) {
       const swapped = kana.split("ー").join(rep);
       for (const candidate of new Set([swapped, withParticleAlt(swapped)])) {
