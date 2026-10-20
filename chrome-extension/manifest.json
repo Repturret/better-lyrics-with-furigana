@@ -1,0 +1,162 @@
+{
+  "manifest_version": 3,
+  "version": "2.4.0",
+  "default_locale": "en",
+  "name": "Better Lyrics (Lyrics for YouTube Music)",
+  "description": "__MSG_extensionDescription__",
+  "homepage_url": "https://betterlyrics.org",
+  "icons": {
+    "16": "images/icons/icon-16.png",
+    "48": "images/icons/icon-48.png",
+    "512": "images/icons/icon-512.png"
+  },
+  "host_permissions": [
+    "*://music.youtube.com/*"
+  ],
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "externally_connectable": {
+    "matches": [
+      "https://unison.betterlyrics.org/*",
+      "https://unison.boidu.dev/*",
+      "https://blrcunison.vercel.app/*"
+    ]
+  },
+  "optional_permissions": [
+    "downloads"
+  ],
+  "optional_host_permissions": [],
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://api.fontshare.com https://fonts.googleapis.com; font-src 'self' data: https://cdn.fontshare.com https://fonts.gstatic.com; img-src 'self' data: https://blrcunison.vercel.app https://boidu.dev https://betterlyrics.org https://raw.githubusercontent.com https://placehold.co; connect-src https://unison.betterlyrics.org https://unison.boidu.dev https://raw.githubusercontent.com https://api.github.com https://themes.betterlyrics.org; frame-src https://themes.betterlyrics.org;"
+  },
+  "options_ui": {
+    "page": "options/index.html",
+    "open_in_tab": false
+  },
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "resources": [
+        "*.js.map",
+        "_locales/*/messages.json",
+        "css/blyrics/*.css",
+        "css/disablestylizedanimations.css",
+        "css/themes/*.css",
+        "css/themesong.css",
+        "css/ytmusic/*.css",
+        "fonts/JetBrainsMono-latin-ext.woff2",
+        "fonts/JetBrainsMono-latin.woff2",
+        "fonts/Satoshi-Variable.woff2",
+        "images/icons/shaders.png",
+        "pages/marketplace.html",
+        "pages/standalone-editor.html",
+        "pages/unison.html"
+      ]
+    },
+    {
+      "matches": [
+        "https://blrcunison.vercel.app/*",
+        "https://unison.betterlyrics.org/*",
+        "https://unison.boidu.dev/*"
+      ],
+      "resources": [
+        "pages/auth.html"
+      ]
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "betterlyrics@boidu.dev",
+      "strict_min_version": "128.0"
+    },
+    "gecko_android": {}
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "js": [
+        "content_scripts/content-0.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED",
+      "css": []
+    },
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "run_at": "document_start",
+      "js": [
+        "content_scripts/content-4.js"
+      ],
+      "css": []
+    },
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "js": [
+        "content_scripts/content-1.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "css": []
+    },
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "run_at": "document_end",
+      "js": [
+        "content_scripts/content-5.js"
+      ],
+      "css": []
+    },
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "js": [
+        "content_scripts/content-2.js"
+      ],
+      "run_at": "document_end",
+      "world": "MAIN",
+      "css": []
+    },
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "run_at": "document_end",
+      "js": [
+        "content_scripts/content-6.js"
+      ],
+      "css": []
+    },
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "js": [
+        "content_scripts/content-3.js"
+      ],
+      "run_at": "document_end",
+      "world": "MAIN",
+      "css": []
+    }
+  ],
+  "action": {
+    "default_popup": "action/index.html"
+  },
+  "version_name": "2.4.0",
+  "background": {
+    "service_worker": "background/service_worker.js",
+    "type": "module"
+  }
+}
