@@ -37,6 +37,12 @@ import {
 } from "@modules/lyrics/furigana";
 import { getLlmConfig, furiganaWithLlm } from "@modules/lyrics/llmTranslation";
 import { runLlmTranslationPass, type LlmTranslationLine } from "@modules/lyrics/forkTranslation";
+import {
+  setTranslationMeta,
+  type TranslationHistoryEntry,
+  type TranslationStage,
+  withTranslationVersion,
+} from "@modules/lyrics/translationDom";
 import { type FuriganaRun, readFuriganaRuns } from "@modules/lyrics/furiganaDom";
 import { attachFuriganaEditing } from "@modules/lyrics/furiganaEditing";
 import { attachLineInteractions } from "@modules/lyrics/lineInteractions";
@@ -59,6 +65,9 @@ interface LyricLineDecoration {
   romanization?: string;
   timedRomanization?: LyricPart[];
   translation?: string;
+  /** Where the current translation came from, and the versions it replaced (see translationDom). */
+  translationStage?: TranslationStage;
+  translationHistory?: TranslationHistoryEntry[];
   /** The furigana readings the side panel worked out for this line (the window has no pipeline). */
   furigana?: FuriganaRun[];
 }
@@ -71,6 +80,17 @@ export type LyricDecorations = Record<number, LyricLineDecoration>;
 
 function recordLyricDecoration(index: number, decoration: LyricLineDecoration): void {
   AppState.lyricDecorations[index] = { ...AppState.lyricDecorations[index], ...decoration };
+}
+
+/**
+ * Records a line's translation together with where it came from and the versions before it, and
+ * stamps the main view's translation row with the same (the Picture-in-Picture window gets both from
+ * the decoration).
+ */
+function recordTranslation(index: number, lyricElement: HTMLElement, text: string, stage: TranslationStage): void {
+  const translationHistory = withTranslationVersion(AppState.lyricDecorations[index]?.translationHistory, stage, text);
+  recordLyricDecoration(index, { translation: text, translationStage: stage, translationHistory });
+  setTranslationMeta(lyricElement, stage, translationHistory);
 }
 
 function isRomanizationDisabledForLang(lang: string): boolean {
@@ -385,7 +405,11 @@ async function processBatchTranslationsAndRomanizations(
 
       if (translationResult && !isSameText(translationResult, item.words)) {
         injectTranslation(doc, lyricElement, translationResult);
-        recordLyricDecoration(index, { translation: translationResult });
+        const isOfficial = !!(
+          matchedLang ||
+          (item.translation && langCodesMatch(targetTranslationLang, item.translation.lang))
+        );
+        recordTranslation(index, lyricElement, translationResult, isOfficial ? "official" : "google");
         didInjectCachedContent = true;
       } else if (sourceLanguage !== targetTranslationLang || containsNonLatin(item.words) || !sourceLanguage) {
         translationBatch.push({ index, text: item.words });
@@ -484,7 +508,7 @@ async function processBatchTranslationsAndRomanizations(
           if (result) {
             const originalIndex = translationBatch[i].index;
             injectTranslation(doc, linesData[originalIndex].lyricElement, result.translatedText);
-            recordLyricDecoration(originalIndex, { translation: result.translatedText });
+            recordTranslation(originalIndex, linesData[originalIndex].lyricElement, result.translatedText, "google");
           }
         });
         lyricsElementAdded();
@@ -513,7 +537,7 @@ async function processBatchTranslationsAndRomanizations(
           contextLines: lyrics.flatMap((item, index) =>
             !item.isInstrumental && !llmTranslationLines.some(l => l.index === index) ? [item.words] : []
           ),
-          onTranslation: (index, text) => recordLyricDecoration(index, { translation: text }),
+          onTranslation: (index, text, stage) => recordTranslation(index, linesData[index].lyricElement, text, stage),
           onApplied: () => {
             lyricsElementAdded();
             publishPictureInPictureLyrics();

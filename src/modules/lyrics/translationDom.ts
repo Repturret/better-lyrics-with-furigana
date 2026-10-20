@@ -19,3 +19,49 @@ export function upsertTranslation(doc: Document, lyricElement: HTMLElement, text
   }
   injectTranslation(doc, lyricElement, text);
 }
+
+// -- Provenance ---------------------------------------------------------------
+
+/** Where the translation a line currently shows came from. */
+export type TranslationStage = "official" | "google" | "llm" | "revised";
+
+export interface TranslationHistoryEntry {
+  stage: TranslationStage;
+  text: string;
+}
+
+const STAGE_LABEL: Record<TranslationStage, string> = {
+  official: "Provider",
+  google: "Google",
+  llm: "AI (1st pass)",
+  revised: "AI (revised)",
+};
+
+/**
+ * Marks a line's translation row with its source and the translations it replaced. The row gets
+ * `data-stage` (fork.css draws a small badge off it) and a `title` listing every version in order,
+ * the current one marked, so an earlier one can be read back by hovering the badge.
+ */
+export function setTranslationMeta(
+  lyricElement: HTMLElement,
+  stage: TranslationStage,
+  history: readonly TranslationHistoryEntry[]
+): void {
+  const row = lyricElement.querySelector<HTMLElement>(`.${TRANSLATED_LYRICS_CLASS}`);
+  if (!row) return;
+  row.dataset.stage = stage;
+  row.title = history
+    .map((entry, i) => `${i === history.length - 1 ? "▶ " : "   "}${STAGE_LABEL[entry.stage]}: ${entry.text}`)
+    .join("\n");
+}
+
+/** `history` with `text` added as the newest version, unless it already is the newest. */
+export function withTranslationVersion(
+  history: readonly TranslationHistoryEntry[] | undefined,
+  stage: TranslationStage,
+  text: string
+): TranslationHistoryEntry[] {
+  const last = history?.[history.length - 1];
+  if (last && last.stage === stage && last.text === text) return [...(history ?? [])];
+  return [...(history ?? []), { stage, text }];
+}

@@ -279,3 +279,40 @@
 .blyrics--copied-toast.blyrics--copied-toast-visible {
 	opacity: 1;
 }
+
+/*
+ * Which version of the translation a line shows: a small badge at the end of its row, drawn off the
+ * `data-stage` translationDom.ts sets. Hovering it lists every version the line has had (the
+ * row's `title`), the current one marked. Not part of the text: the row's own text is untouched,
+ * and copying skips translation rows altogether.
+ */
+.blyrics--translated[data-stage]::after {
+	display: inline-block;
+	margin-inline-start: 0.6em;
+	padding: 0 0.4em;
+	border: 1px solid currentColor;
+	border-radius: 0.6em;
+	font-size: 0.5em;
+	font-weight: 700;
+	line-height: 1.5;
+	letter-spacing: 0.02em;
+	vertical-align: middle;
+	opacity: 0.5;
+	cursor: help;
+}
+
+.blyrics--translated[data-stage="official"]::after {
+	content: "✓";
+}
+
+.blyrics--translated[data-stage="google"]::after {
+	content: "G";
+}
+
+.blyrics--translated[data-stage="llm"]::after {
+	content: "AI";
+}
+
+.blyrics--translated[data-stage="revised"]::after {
+	content: "AI+";
+}

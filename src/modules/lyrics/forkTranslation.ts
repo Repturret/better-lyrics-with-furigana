@@ -28,7 +28,7 @@ interface LlmTranslationPass {
    *  so its translation of an odd English line sounds like the same singer. */
   contextLines?: string[];
   /** Called with every line whose text changed, so other views can mirror it. */
-  onTranslation: (index: number, text: string) => void;
+  onTranslation: (index: number, text: string, stage: "llm" | "revised") => void;
   onApplied: () => void;
   signal?: AbortSignal;
 }
@@ -55,9 +55,9 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   const cfg = await getLlmConfig();
   if (!cfg || isStale()) return;
 
-  const apply = (line: LlmTranslationLine, text: string): void => {
+  const apply = (line: LlmTranslationLine, text: string, stage: "llm" | "revised"): void => {
     upsertTranslation(pass.doc, pass.lyricElementAt(line.index), text);
-    pass.onTranslation(line.index, text);
+    pass.onTranslation(line.index, text, stage);
   };
 
   const texts = lines.map(l => l.text);
@@ -76,7 +76,7 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
     const line = lines[i];
     if (!translated || line.official || isSameText(translated, line.text)) return;
     if (looksUntranslated(line.text, translated, targetLanguage)) return;
-    apply(line, translated);
+    apply(line, translated, "llm");
     applied++;
   });
   if (applied > 0) pass.onApplied();
@@ -99,7 +99,7 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   revised.forEach((text, i) => {
     if (!text || !drafts[i] || text === drafts[i] || isSameText(text, lines[i].text)) return;
     if (looksUntranslated(lines[i].text, text, targetLanguage)) return;
-    apply(lines[i], text);
+    apply(lines[i], text, "revised");
     revisedCount++;
   });
   if (revisedCount > 0) pass.onApplied();

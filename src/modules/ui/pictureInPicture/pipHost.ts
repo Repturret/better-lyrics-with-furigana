@@ -3,7 +3,7 @@ import { CUSTOM_THEME_STYLE_ID } from "@braccato/core/constants";
 import { createLyricsRenderer, injectRomanization, type Lyric, type LyricsRenderer } from "@braccato/core";
 import { applyFuriganaRuns } from "@modules/lyrics/furiganaDom";
 import { attachLineInteractions } from "@modules/lyrics/lineInteractions";
-import { upsertTranslation } from "@modules/lyrics/translationDom";
+import { setTranslationMeta, upsertTranslation } from "@modules/lyrics/translationDom";
 import { onLyrics, type PictureInPictureLyricsPayload } from "./bridge";
 import { PictureInPictureController } from "./controller";
 import { PictureInPictureLyricsView } from "./lyricsView";
@@ -251,6 +251,9 @@ export function createPictureInPictureHost(
         // Replaced, not injected: the core's injector leaves a line that already has a translation
         // alone, and a later one (the LLM's, then its revision) has to be able to take its place.
         upsertTranslation(pipDocument, line.lyricElement, decoration.translation);
+        if (decoration.translationStage && decoration.translationHistory) {
+          setTranslationMeta(line.lyricElement, decoration.translationStage, decoration.translationHistory);
+        }
       }
       const text = lyricsPayload?.lyrics?.[Number(index)]?.words;
       if (decoration.furigana && text) {
