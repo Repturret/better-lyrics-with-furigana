@@ -24,6 +24,10 @@ interface LlmTranslationPass {
   sourceLanguage: string | undefined;
   isStale: () => boolean;
   isSameText: (a: string, b: string) => boolean;
+  /** The song's own lines that are not being translated (already in the target language, e.g. a
+   *  Korean song's Korean lines for a Korean reader). Still the song's voice: handed to the model
+   *  so its translation of an odd English line sounds like the same singer. */
+  contextLines?: string[];
   /** Called with every line whose text changed, so other views can mirror it. */
   onTranslation: (index: number, text: string) => void;
   onApplied: () => void;
@@ -68,7 +72,14 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   };
 
   const texts = lines.map(l => l.text);
-  const improved = await translateLinesWithLlm(texts, targetLanguage, pass.sourceLanguage, cfg, signal);
+  const improved = await translateLinesWithLlm(
+    texts,
+    targetLanguage,
+    pass.sourceLanguage,
+    cfg,
+    signal,
+    pass.contextLines
+  );
   if (isStale()) return;
 
   let applied = 0;
@@ -85,9 +96,14 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   if (!AppState.isLlmRevisionEnabled) return;
   const drafts = improved.map((translated, i) => {
     const line = lines[i];
-    return translated && !line.official && !isSameText(translated, line.text) ? translated : null;
+    return translated &&
+      !line.official &&
+      !isSameText(translated, line.text) &&
+      !looksUntranslated(line.text, translated, targetLanguage)
+      ? translated
+      : null;
   });
-  const revised = await reviseTranslationWithLlm(texts, drafts, targetLanguage, cfg, signal);
+  const revised = await reviseTranslationWithLlm(texts, drafts, targetLanguage, cfg, signal, pass.contextLines);
   if (isStale()) return;
 
   let revisedCount = 0;

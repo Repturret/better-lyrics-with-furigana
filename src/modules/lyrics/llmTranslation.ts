@@ -70,12 +70,35 @@ function customInstructions(customPrompt?: string): string {
   return `\n\nAdditional instructions from the user (follow them unless they conflict with the output format above):\n${extra}`;
 }
 
+/**
+ * Songs often drop a few lines in another language into a mostly Japanese or Korean song. Left to
+ * itself the model translates those lines in whatever register it happens to pick, which then reads
+ * like a different singer. The song's main language sets the voice; the other lines follow it.
+ */
+const MIXED_LANGUAGE_RULE =
+  "If the song mixes languages (for example a few English lines inside a mostly Japanese or Korean song), " +
+  "the song's main language sets its voice: translate the lines in any other language with the same speech " +
+  "level, tone, diction and style you use for the main-language lines, so the whole song reads as one singer. ";
+
+const CONTEXT_RULE =
+  'The input may also carry a "context" array: other lines of the same song in its main language, given ' +
+  "only so you can hear that voice. Never translate them and never return them. ";
+
+/** Songs can be long; the voice shows within the first few dozen lines. */
+const MAX_CONTEXT_LINES = 40;
+
+function trimContext(context: string[]): string[] {
+  return context.filter(line => line.trim()).slice(0, MAX_CONTEXT_LINES);
+}
+
 function buildPrompt(
   lines: string[],
   targetLanguage: string,
   sourceLanguage?: string | null,
-  customPrompt?: string
+  customPrompt?: string,
+  context: string[] = []
 ): { system: string; user: string } {
+  const ctx = trimContext(context);
   const from = sourceLanguage ? ` from ${sourceLanguage}` : "";
   const system =
     `You translate song lyrics${from} into the target language BCP-47 code "${targetLanguage}". ` +
@@ -83,12 +106,17 @@ function buildPrompt(
     "do not translate idioms word-for-word. Keep proper nouns, names and interjections. " +
     "If a line is already in the target language, or is only punctuation/symbols, return it unchanged. " +
     "Text inside quotation marks or brackets (「」, 『』, “”) is still lyric text and must be translated. " +
+    MIXED_LANGUAGE_RULE +
+    (ctx.length > 0 ? CONTEXT_RULE : "") +
     'The input is {"lines": [{"id": 0, "text": "..."}, ...]}. Return ONLY a JSON object of the form ' +
     '{"lines": [{"id": 0, "text": "<translation>"}, ...]} with one entry per input id, using the same ids in the ' +
     "same order. Never merge, split, skip or reorder lines: every id gets the translation of its own text. " +
     "No commentary." +
     customInstructions(customPrompt);
-  const user = JSON.stringify({ lines: lines.map((text, id) => ({ id, text })) });
+  const user = JSON.stringify({
+    lines: lines.map((text, id) => ({ id, text })),
+    ...(ctx.length > 0 ? { context: ctx } : {}),
+  });
   return { system, user };
 }
 
@@ -262,20 +290,23 @@ export async function translateLinesWithLlm(
   targetLanguage: string,
   sourceLanguage: string | null | undefined,
   cfg: LlmConfig,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  context: string[] = []
 ): Promise<(string | null)[]> {
   const nulls = (): (string | null)[] => lines.map(() => null);
   if (lines.length === 0) return [];
 
   const customPrompt = AppState.llmCustomPrompt;
-  const cacheKey = hashKey(`${cfg.provider} ${cfg.model} ${targetLanguage} ${customPrompt}\n${lines.join("\n")}`);
+  const cacheKey = hashKey(
+    `${cfg.provider} ${cfg.model} ${targetLanguage} ${customPrompt}\n${trimContext(context).join("\n")}\n--\n${lines.join("\n")}`
+  );
   const cached = await readSongCache(cacheKey, lines.length);
   if (cached) {
     log(LOG_PREFIX, `LLM translation: cache hit (${cfg.provider}/${cfg.model})`);
     return cached.map(s => s || null);
   }
 
-  const prompt = buildPrompt(lines, targetLanguage, sourceLanguage, customPrompt);
+  const prompt = buildPrompt(lines, targetLanguage, sourceLanguage, customPrompt, context);
   let raw: string;
   try {
     raw = await callProvider(cfg, prompt, signal);
@@ -301,7 +332,7 @@ export async function translateLinesWithLlm(
       const retryLines = firstMissing.map(i => lines[i]);
       const retryRaw = await callProvider(
         cfg,
-        buildPrompt(retryLines, targetLanguage, sourceLanguage, customPrompt),
+        buildPrompt(retryLines, targetLanguage, sourceLanguage, customPrompt, context),
         signal
       );
       const retried = parseIndexedLines(retryRaw, retryLines.length);
@@ -439,8 +470,10 @@ function buildRevisionPrompt(
   sources: string[],
   drafts: string[],
   targetLanguage: string,
-  customPrompt?: string
+  customPrompt?: string,
+  context: string[] = []
 ): { system: string; user: string } {
+  const ctx = trimContext(context);
   const system =
     `You are the final editor of translated song lyrics. Each input item has the original line ("source") and a ` +
     `draft translation ("draft") in the language with BCP-47 code "${targetLanguage}". Rewrite every draft so it ` +
@@ -450,13 +483,19 @@ function buildRevisionPrompt(
     "For Korean: never end a phrase or line in a plain written declarative (~이다, ~한다, ~하다, ~했다, ~하였다, ~ㄴ다/~는다), " +
     "and never leave a verb in bare dictionary form to connect phrases - use spoken endings and connective forms " +
     "(~고, ~서, ~며, ~아/어) instead. Choose ONE speech level for the whole song (casual 반말 or polite ~요) and use " +
-    "it consistently, but vary the specific endings. Where the source repeats a grammatical pattern, keep the " +
+    "it consistently, but vary the specific endings. " +
+    MIXED_LANGUAGE_RULE +
+    (ctx.length > 0 ? CONTEXT_RULE : "") +
+    "Where the source repeats a grammatical pattern, keep the " +
     "repeated pattern mirrored in the output. Identical source lines must get identical output lines. Do not merge " +
     'or split lines. The input is {"items": [{"id": 0, "source": "...", "draft": "..."}, ...]}. Return ONLY a ' +
     'JSON object of the form {"lines": [{"id": 0, "text": "<revised draft>"}, ...]} with one entry per input id, ' +
     "using the same ids in the same order. No commentary." +
     customInstructions(customPrompt);
-  const user = JSON.stringify({ items: sources.map((source, id) => ({ id, source, draft: drafts[id] })) });
+  const user = JSON.stringify({
+    items: sources.map((source, id) => ({ id, source, draft: drafts[id] })),
+    ...(ctx.length > 0 ? { context: ctx } : {}),
+  });
   return { system, user };
 }
 
@@ -471,7 +510,8 @@ export async function reviseTranslationWithLlm(
   drafts: (string | null)[],
   targetLanguage: string,
   cfg: LlmConfig,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  context: string[] = []
 ): Promise<(string | null)[]> {
   const nulls = (): (string | null)[] => sources.map(() => null);
   const indices = drafts.flatMap((draft, i) => (draft ? [i] : []));
@@ -481,7 +521,7 @@ export async function reviseTranslationWithLlm(
   const dr = indices.map(i => drafts[i] as string);
   const customPrompt = AppState.llmCustomPrompt;
   const cacheKey = hashKey(
-    `revise ${cfg.provider} ${cfg.model} ${targetLanguage} ${customPrompt}\n${src.join("\n")}\n${dr.join("\n")}`
+    `revise ${cfg.provider} ${cfg.model} ${targetLanguage} ${customPrompt}\n${trimContext(context).join("\n")}\n--\n${src.join("\n")}\n${dr.join("\n")}`
   );
 
   let revised = await readSongCache(cacheKey, indices.length);
@@ -490,7 +530,7 @@ export async function reviseTranslationWithLlm(
   } else {
     let raw: string;
     try {
-      raw = await callProvider(cfg, buildRevisionPrompt(src, dr, targetLanguage, customPrompt), signal);
+      raw = await callProvider(cfg, buildRevisionPrompt(src, dr, targetLanguage, customPrompt, context), signal);
     } catch (error) {
       if ((error as Error).name !== "AbortError") log(TRANSLATION_ERROR_LOG, "LLM revision failed", error);
       return nulls();

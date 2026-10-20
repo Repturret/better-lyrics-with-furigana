@@ -494,6 +494,9 @@ async function processBatchTranslationsAndRomanizations(
           sourceLanguage: sourceLanguage ?? undefined,
           isStale,
           isSameText,
+          contextLines: lyrics.flatMap((item, index) =>
+            !item.isInstrumental && !llmTranslationLines.some(l => l.index === index) ? [item.words] : []
+          ),
           onTranslation: (index, text) => recordLyricDecoration(index, { translation: text }),
           onApplied: () => {
             lyricsElementAdded();
