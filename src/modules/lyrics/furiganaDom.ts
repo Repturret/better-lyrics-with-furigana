@@ -80,20 +80,17 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
     if (!startSpan) continue;
     const endSpan = spans.find(sp => run.end - 1 >= sp.start && run.end - 1 < sp.end) ?? startSpan;
 
-    let centerPx = 0;
+    const meta: RunMeta = {
+      startEl: startSpan.el,
+      startOffset: run.start - startSpan.start,
+      endEl: endSpan.el,
+      endOffset: run.end - 1 - endSpan.start,
+    };
     // Rendered width of the kanji this reading sits over, in viewport px, used by the collision
     // pass to decide which readings to condense.
-    let kanjiWidthPx = 0;
-    const first = charRect(doc, startSpan.el, run.start - startSpan.start);
-    const last = charRect(doc, endSpan.el, run.end - 1 - endSpan.start);
-    const wordRect = startSpan.el.getBoundingClientRect();
-    // getBoundingClientRect is post-scale (the line is scaled); convert the delta back into the
-    // anchor word's own unscaled pixels.
-    const scale = startSpan.el.offsetWidth > 0 ? wordRect.width / startSpan.el.offsetWidth : 1;
-    if (first && last && scale > 0) {
-      centerPx = ((first.left + last.right) / 2 - wordRect.left) / scale;
-      kanjiWidthPx = Math.max(0, last.right - first.left);
-    }
+    const measured = measureRun(doc, meta);
+    const centerPx = measured?.centerPx ?? 0;
+    const kanjiWidthPx = measured?.kanjiWidthPx ?? 0;
 
     // One segment per word the run overlaps, each with its own absolute start (song-seconds) and
     // share of the singing time, pro-rated out of that word's own duration (the reading of 旅立
@@ -138,6 +135,7 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
     rt.append(highlight);
     rt.style.left = `${Math.max(centerPx, 0)}px`;
     startSpan.el.appendChild(rt);
+    runMetas.set(rt, meta);
     attached++;
     placed.push({ rt, span: startSpan, kanjiWidthPx });
 
@@ -151,7 +149,82 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
   }
 
   resolveFuriganaLayout(line.lyricElement, placed);
+  ensureFuriganaReflow(doc);
   return attached;
+}
+
+// -- Reflow -----------------------------------------------------------------
+
+/** Where a reading's first and last kanji sit, kept so it can be measured again later. */
+interface RunMeta {
+  startEl: HTMLElement;
+  startOffset: number;
+  endEl: HTMLElement;
+  endOffset: number;
+}
+
+const runMetas = new WeakMap<HTMLElement, RunMeta>();
+
+/** The reading's horizontal centre (in its anchor word's own pixels) and its kanji's width, or null
+ *  when the word has no layout to measure right now (a culled line, a hidden window). */
+function measureRun(doc: Document, meta: RunMeta): { centerPx: number; kanjiWidthPx: number } | null {
+  const wordRect = meta.startEl.getBoundingClientRect();
+  if (wordRect.width === 0) return null;
+  const first = charRect(doc, meta.startEl, meta.startOffset);
+  const last = charRect(doc, meta.endEl, meta.endOffset);
+  // getBoundingClientRect is post-scale (the line is scaled); convert the delta back into the
+  // anchor word's own unscaled pixels.
+  const scale = meta.startEl.offsetWidth > 0 ? wordRect.width / meta.startEl.offsetWidth : 1;
+  if (!first || !last || scale <= 0) return null;
+  return {
+    centerPx: ((first.left + last.right) / 2 - wordRect.left) / scale,
+    kanjiWidthPx: Math.max(0, last.right - first.left),
+  };
+}
+
+/**
+ * Re-measures and re-places every reading under `root`. A reading's position is fixed pixels worked
+ * out when it was attached, but the text it sits over does not stay that wide: the Picture-in-Picture
+ * window sizes its lyrics off its own width and loads its web fonts after the lyrics are built, so
+ * every reading ended up a little left of the kanji it belongs to once the real glyphs arrived.
+ */
+export function reflowFurigana(root: ParentNode, doc: Document): void {
+  for (const lineEl of root.querySelectorAll<HTMLElement>(".blyrics--line")) {
+    const placed: PlacedFurigana[] = [];
+    for (const rt of lineEl.querySelectorAll<HTMLElement>(`.${FURIGANA_CLASS}`)) {
+      const meta = runMetas.get(rt);
+      if (!meta) continue;
+      const measured = measureRun(doc, meta);
+      if (!measured) continue;
+      // Back to the unsqueezed base before measuring the overlap again, which decides squeezing anew.
+      rt.style.removeProperty("transform");
+      rt.style.left = `${Math.max(measured.centerPx, 0)}px`;
+      placed.push({ rt, span: { el: meta.startEl }, kanjiWidthPx: measured.kanjiWidthPx });
+    }
+    if (placed.length) resolveFuriganaLayout(lineEl, placed);
+  }
+}
+
+const reflowInstalled = new WeakSet<Document>();
+
+/** Once per document: re-place the readings when the window resizes or a web font finishes loading. */
+function ensureFuriganaReflow(doc: Document): void {
+  if (reflowInstalled.has(doc)) return;
+  const view = doc.defaultView;
+  if (!view) return;
+  reflowInstalled.add(doc);
+
+  let frame: number | null = null;
+  const schedule = (): void => {
+    if (frame !== null) return;
+    frame = view.requestAnimationFrame(() => {
+      frame = null;
+      reflowFurigana(doc, doc);
+    });
+  };
+  view.addEventListener("resize", schedule);
+  doc.fonts?.addEventListener("loadingdone", schedule);
+  void doc.fonts?.ready.then(schedule);
 }
 
 /** Readings currently on a line, in order. */
