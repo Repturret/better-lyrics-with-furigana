@@ -170,6 +170,8 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["熟れ", 0, 1, "う"],
   ["惰性", 0, 2, "だせい"],
   ["後味悪", 0, 3, "あとあじわる"],
+  // 星街 (Hoshimachi, as in 星街すいせい) is ほしまち; Google hears it as ほしがい.
+  ["星街", 0, 2, "ほしまち"],
 ];
 
 type KuromojiToken = { surface_form: string; reading?: string };
