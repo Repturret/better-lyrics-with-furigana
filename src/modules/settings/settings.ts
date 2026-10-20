@@ -10,6 +10,7 @@ import { AppState, reloadLyrics } from "@core/appState";
 import { clearCache, compileRicsToStyles, getStorage } from "@core/storage";
 import { configureLogging, logContent } from "@core/logger";
 import { clearCache as clearTranslationCache } from "@modules/lyrics/translation";
+import { setTranslationSourceVisible } from "@modules/lyrics/translationDom";
 import { mountDock, mountVotingSegment, reloadAlbumArt, unmountDock, updateDockPosition } from "@modules/ui/dom";
 import { applyGlobalOffsets } from "@modules/ui/lyricsDock/offset";
 import { mainView } from "@modules/ui/mainLyricsView";
@@ -439,6 +440,7 @@ export function loadTranslationSettings(): void {
       llmCustomPrompt: "",
       isLlmFuriganaEnabled: true,
       isLlmRevisionEnabled: true,
+      isTranslationSourceBadgeEnabled: false,
     },
     items => {
       AppState.isTranslateEnabled = items.isTranslateEnabled;
@@ -452,6 +454,9 @@ export function loadTranslationSettings(): void {
       AppState.llmCustomPrompt = String(items.llmCustomPrompt ?? "");
       AppState.isLlmFuriganaEnabled = items.isLlmFuriganaEnabled !== false;
       AppState.isLlmRevisionEnabled = items.isLlmRevisionEnabled !== false;
+      AppState.isTranslationSourceBadgeEnabled = items.isTranslationSourceBadgeEnabled === true;
+      setTranslationSourceVisible(document, AppState.isTranslationSourceBadgeEnabled);
+      publishPictureInPictureLyrics();
     }
   );
 }

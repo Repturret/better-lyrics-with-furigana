@@ -65,3 +65,14 @@ export function withTranslationVersion(
   if (last && last.stage === stage && last.text === text) return [...(history ?? [])];
   return [...(history ?? []), { stage, text }];
 }
+
+const SOURCE_BADGE_ATTRIBUTE = "data-blyrics-translation-source";
+
+/**
+ * Shows or hides the source badge on every translation row of `doc`. It is one attribute on the
+ * document's root that fork.css keys the badge off, so a row needs no change when it is toggled and
+ * the Picture-in-Picture window follows with the same call on its own document.
+ */
+export function setTranslationSourceVisible(doc: Document, visible: boolean): void {
+  doc.documentElement.toggleAttribute(SOURCE_BADGE_ATTRIBUTE, visible);
+}

@@ -32,6 +32,7 @@ export const DOCK_CONTROL_ORDER_DEFAULT = [
   "offset",
   "refresh",
   "pictureInPicture",
+  "translationSource",
 ] as const;
 export const MODAL_OVERLAY_CLASS = "blyrics-modal-overlay" as const;
 export const MODAL_CLASS = "blyrics-modal" as const;

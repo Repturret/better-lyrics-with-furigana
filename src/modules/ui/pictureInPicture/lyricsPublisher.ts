@@ -79,6 +79,7 @@ export function publishPictureInPictureLyrics(): void {
     richsyncOffsetTrim: AppState.richsyncOffsetTrim,
     lineOffsetTrim: AppState.lineOffsetTrim,
     passiveScrollEnabled: AppState.isPassiveScrollEnabled,
+    translationSourceVisible: AppState.isTranslationSourceBadgeEnabled,
     suppressZeroTimeUntil: AppState.suppressZeroTime,
   });
 }

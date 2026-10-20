@@ -262,6 +262,10 @@
     "message": "Choose lyrics source",
     "description": "Accessible label for the lyrics dock button that opens the source provider dropdown"
   },
+  "lyricsDock_translationSource": {
+    "message": "Show translation source",
+    "description": "Accessible label for the lyrics dock toggle that shows which engine (Google, AI, revised AI) produced each translation"
+  },
   "lyricsDock_refresh": {
     "message": "Refresh lyrics",
     "description": "Accessible label for the lyrics dock button that re-fetches lyrics for the current song, bypassing the cache"

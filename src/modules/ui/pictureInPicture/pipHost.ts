@@ -3,7 +3,7 @@ import { CUSTOM_THEME_STYLE_ID } from "@braccato/core/constants";
 import { createLyricsRenderer, injectRomanization, type Lyric, type LyricsRenderer } from "@braccato/core";
 import { applyFuriganaRuns } from "@modules/lyrics/furiganaDom";
 import { attachLineInteractions } from "@modules/lyrics/lineInteractions";
-import { setTranslationMeta, upsertTranslation } from "@modules/lyrics/translationDom";
+import { setTranslationMeta, setTranslationSourceVisible, upsertTranslation } from "@modules/lyrics/translationDom";
 import { onLyrics, type PictureInPictureLyricsPayload } from "./bridge";
 import { PictureInPictureController } from "./controller";
 import { PictureInPictureLyricsView } from "./lyricsView";
@@ -234,6 +234,7 @@ export function createPictureInPictureHost(
     const decorations = lyricsPayload?.decorations;
     if (!renderer || !pipDocument || !decorations) return;
 
+    setTranslationSourceVisible(pipDocument, lyricsPayload?.translationSourceVisible === true);
     const lines = renderer.lines;
     for (const [index, decoration] of Object.entries(decorations)) {
       const line = lines[Number(index)];

@@ -4,7 +4,9 @@ import { attachHoldRepeat } from "@core/holdRepeat";
 import { t } from "@core/i18n";
 import { setStorage } from "@core/storage";
 import { mainView } from "@modules/ui/mainLyricsView";
+import { setTranslationSourceVisible } from "@modules/lyrics/translationDom";
 import { pictureInPictureController } from "@modules/ui/pictureInPicture/browserController";
+import { publishPictureInPictureLyrics } from "@modules/ui/pictureInPicture/lyricsPublisher";
 import { controlIcons, parseSvgString, syncTypeColors, syncTypeIcons } from "./icons";
 import {
   adjustGlobalOffsetValue,
@@ -283,6 +285,22 @@ function toggleRomanize(): void {
   scheduleTogglePersist();
 }
 
+function toggleTranslationSource(): void {
+  AppState.isTranslationSourceBadgeEnabled = !AppState.isTranslationSourceBadgeEnabled;
+  setTranslationSourceVisible(document, AppState.isTranslationSourceBadgeEnabled);
+  publishPictureInPictureLyrics();
+  scheduleSourceBadgePersist();
+}
+
+// Only the flag is stored: nothing about the lyrics changes, so no reload follows it.
+let sourceBadgePersistTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSourceBadgePersist(): void {
+  if (sourceBadgePersistTimer) clearTimeout(sourceBadgePersistTimer);
+  sourceBadgePersistTimer = setTimeout(() => {
+    setStorage({ isTranslationSourceBadgeEnabled: AppState.isTranslationSourceBadgeEnabled });
+  }, TOGGLE_PERSIST_DELAY);
+}
+
 function hasLyrics(): boolean {
   return mainView.lines.length > 0;
 }
@@ -482,6 +500,15 @@ const controlBuilders: Record<string, () => HTMLElement | null> = {
           AppState.isRomanizationEnabled,
           t("options_romanization_tab"),
           toggleRomanize
+        )
+      : null,
+  translationSource: () =>
+    hasLyrics() && AppState.isTranslateEnabled
+      ? buildToggle(
+          controlIcons.translationSource,
+          AppState.isTranslationSourceBadgeEnabled,
+          t("lyricsDock_translationSource"),
+          toggleTranslationSource
         )
       : null,
   offset: () => (isSynced() && AppState.isDockOffsetEnabled ? buildOffsetControl() : null),
