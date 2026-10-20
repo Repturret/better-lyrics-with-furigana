@@ -122,6 +122,8 @@
 	top: 0;
 	width: 100%;
 	pointer-events: none;
+	/* A line that has been sung fades its filled-in reading back to the dim resting look. */
+	transition: opacity var(--blyrics-furigana-fade-duration) ease;
 	color: transparent;
 	-webkit-background-clip: text;
 	background-clip: text;

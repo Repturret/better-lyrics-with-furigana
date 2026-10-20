@@ -214,6 +214,49 @@ interface SweepEntry {
   totalDurSec: number;
 }
 
+/** Fading the filled reading back out takes this long, matching fork.css's opacity transition. */
+const SWEEP_RESET_FADE_MS = 450;
+
+interface SweepState {
+  /** The line was animating on the last frame, so the reading may be showing a sweep. */
+  active: boolean;
+  resetTimer: number | null;
+}
+
+const sweepStates = new WeakMap<SweepEntry, SweepState>();
+
+/**
+ * Once the line stops being the one being sung, a reading must go back to its dim resting look like
+ * the word's own highlight does (the core fades that out as the line exits), instead of staying
+ * filled in for good. The fill fades out, then its sweep position is cleared.
+ */
+function resetSweep(entry: SweepEntry, view: Window): void {
+  const state = sweepStates.get(entry);
+  if (!state) return;
+  state.active = false;
+  entry.highlight.style.opacity = "0";
+  state.resetTimer = view.setTimeout(() => {
+    entry.highlight.style.removeProperty(AMOUNT_START);
+    entry.highlight.style.removeProperty(AMOUNT_END);
+    entry.highlight.style.removeProperty("opacity");
+    state.resetTimer = null;
+  }, SWEEP_RESET_FADE_MS);
+}
+
+function activateSweep(entry: SweepEntry, view: Window): void {
+  let state = sweepStates.get(entry);
+  if (!state) {
+    state = { active: false, resetTimer: null };
+    sweepStates.set(entry, state);
+  }
+  if (state.resetTimer !== null) {
+    view.clearTimeout(state.resetTimer);
+    state.resetTimer = null;
+    entry.highlight.style.removeProperty("opacity");
+  }
+  state.active = true;
+}
+
 interface SweepRegistry {
   entries: Set<SweepEntry>;
   running: boolean;
@@ -335,7 +378,12 @@ function trackSweep(doc: Document, entry: SweepEntry): void {
         current.entries.delete(item);
         continue;
       }
-      if (item.line.isAnimating) syncSweep(item);
+      if (item.line.isAnimating) {
+        activateSweep(item, view);
+        syncSweep(item);
+      } else if (sweepStates.get(item)?.active) {
+        resetSweep(item, view);
+      }
     }
     if (current.entries.size === 0) {
       current.running = false;
