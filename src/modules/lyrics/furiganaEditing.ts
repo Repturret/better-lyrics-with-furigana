@@ -60,6 +60,15 @@ function openEditor(rt: HTMLElement): void {
   input.value = rt.dataset.reading ?? "";
   input.spellcheck = false;
   input.autocomplete = "off";
+  // The reading is positioned by an inline `left` (the centre of its kanji): the field has to take
+  // the same one, or it falls back to the word's left edge and, centred on that, hangs off the side.
+  input.style.left = rt.style.left;
+  // Sized to what is typed, not a fixed width, so a long reading is not cut off inside the field.
+  const fit = (): void => {
+    input.style.width = `${Math.max(input.value.length, 2) + 1.5}em`;
+  };
+  fit();
+  input.addEventListener("input", fit);
   // The line still owns click/dblclick handling underneath (seek, drag-copy): keep every pointer
   // and key event here from reaching it while the field is open.
   input.addEventListener("mousedown", event => event.stopPropagation());
