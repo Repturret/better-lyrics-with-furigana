@@ -187,7 +187,9 @@ export function createPictureInPictureHost(
       // installed once). Seek itself is the core's own per-line click, through this window's host.
       attachLineInteractions(builtContainer, {
         copiedLabel: () => environment.view.translate("lyrics_copied"),
-        log: (...args) => environment.view.log(...args),
+        get log() {
+          return environment.view.log;
+        },
       });
     }
     syncSourceFooter();

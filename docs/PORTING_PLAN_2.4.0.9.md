@@ -232,7 +232,8 @@ git checkout -b port/2.4.0.9 v2.4.0.9     # 이식은 새 브랜치에서
 
 ### Phase 7 — 마무리 (S~M)
 
-- [ ] AI 후리가나(12) 마무리, UtaTen 흔적이 없는지 확인(`npm run knip`으로 미사용 코드 점검), 문서 갱신, `README.md` 버전 표기, 셀프체크 추가(6절).
+- [x] 코드 완료(2026-10): 셀프체크 `fork.selfcheck.ts` 추가, 로거 래퍼 위반 수정, knip 미사용 export 정리, UtaTen 코드/권한 없음 확인. 브라우저 회귀 점검은 사용자 몫. 후속은 [EXCEPTIONS_TOOL_PLAN.md](EXCEPTIONS_TOOL_PLAN.md).
+- [ ] (원문) AI 후리가나(12) 마무리, UtaTen 흔적이 없는지 확인(`npm run knip`으로 미사용 코드 점검), 문서 갱신, `README.md` 버전 표기, 셀프체크 추가(6절).
 
 ## 6. 검증
 

@@ -39,7 +39,7 @@ interface LlmTranslationPass {
  * or quotation marks. Judged by script, since the target language's own script is not known here -
  * mostly kana/Han coming back out for a Japanese line headed to a non-CJK language is untranslated.
  */
-function looksUntranslated(source: string, translated: string, targetLanguage: string): boolean {
+export function looksUntranslated(source: string, translated: string, targetLanguage: string): boolean {
   const cjkChar = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
   const cjkChars = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/gu;
   if (!cjkChar.test(source) || /^(ja|zh)/i.test(targetLanguage)) return false;

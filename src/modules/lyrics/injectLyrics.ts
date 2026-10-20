@@ -212,7 +212,9 @@ function injectLyrics(
     attachLineInteractions(lyricsContainer, {
       copiedLabel: () => t("lyrics_copied"),
       // `logCore` is reassigned when the logging setting changes, so it is read at call time.
-      log: (...args) => logCore(...args),
+      get log() {
+        return logCore;
+      },
     });
     attachFuriganaEditing(lyricsContainer);
   }

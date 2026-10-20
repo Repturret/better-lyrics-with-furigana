@@ -144,7 +144,7 @@ function buildPrompt(
  * salvaged entry by entry. A plain string array is still accepted, but only when
  * its length lines up exactly. Returns null when nothing usable came back.
  */
-function parseIndexedLines(raw: string, expected: number): (string | null)[] | null {
+export function parseIndexedLines(raw: string, expected: number): (string | null)[] | null {
   let text = raw.trim();
   // Strip ```json ... ``` fences if the model added them.
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);

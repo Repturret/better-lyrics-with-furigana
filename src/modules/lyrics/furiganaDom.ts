@@ -188,7 +188,7 @@ function measureRun(doc: Document, meta: RunMeta): { centerPx: number; kanjiWidt
  * window sizes its lyrics off its own width and loads its web fonts after the lyrics are built, so
  * every reading ended up a little left of the kanji it belongs to once the real glyphs arrived.
  */
-export function reflowFurigana(root: ParentNode, doc: Document): void {
+function reflowFurigana(root: ParentNode, doc: Document): void {
   for (const lineEl of root.querySelectorAll<HTMLElement>(".blyrics--line")) {
     const placed: PlacedFurigana[] = [];
     for (const rt of lineEl.querySelectorAll<HTMLElement>(`.${FURIGANA_CLASS}`)) {

@@ -41,7 +41,7 @@ const DIGIT_KANJI = ["〇", "一", "二", "三", "四", "五", "六", "七", "�
 // 愛しい stem "itoshi", その先 as せん not さき). Each entry is
 // [match, kanjiStart, kanjiEnd, reading]: `match` is searched in the line and
 // `reading` is placed over match[kanjiStart..kanjiEnd].
-export type ReadingOverride = readonly [string, number, number, string];
+type ReadingOverride = readonly [string, number, number, string];
 
 const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["一昨日", 0, 3, "おととい"],
@@ -517,7 +517,7 @@ function findAnchor(reading: string, kana: string, from: number): number {
  * anchors into `reading`, returns the kana reading of each kanji run with its
  * character offset. Works for a whole line or a single token.
  */
-function alignKanjiRuns(surface: string, rawReading: string): { offset: number; end: number; reading: string }[] {
+export function alignKanjiRuns(surface: string, rawReading: string): { offset: number; end: number; reading: string }[] {
   // Punctuation / spaces / latin that Google passes through the romaji would
   // otherwise land inside a run or break an anchor - keep only kana here.
   const reading = rawReading.replace(/[^぀-ゟァ-ヺーヽヾー]/g, "");
@@ -631,7 +631,7 @@ function alignKanjiRuns(surface: string, rawReading: string): { offset: number; 
   return runs;
 }
 
-function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
+export function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
   let result = runs;
   const claimed: [number, number][] = [];
   // Longest match wins: 愛してる before 愛して, 一昨日 before 昨日.

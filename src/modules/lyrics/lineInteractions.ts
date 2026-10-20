@@ -31,7 +31,7 @@ import { FURIGANA_CLASS } from "@modules/lyrics/furiganaDom";
  * logger; the Picture-in-Picture window, which on Gecko is the page world with no `chrome.*`, passes
  * what its own host environment provides. Nothing here reaches for either directly.
  */
-export interface LineInteractionHost {
+interface LineInteractionHost {
   /** The "Copied" toast text. */
   copiedLabel: () => string;
   log: (...args: unknown[]) => void;
@@ -164,7 +164,7 @@ function withinZone(edges: TextEdges, clientX: number, widen: boolean): boolean 
  * A fresh (narrow, non-widened) gutter test against a line's current, live position. Only valid to
  * call on a line that is not already the hovered target - see the module doc comment above.
  */
-export function isInSeekGutter(lineElement: HTMLElement, clientX: number): boolean {
+function isInSeekGutter(lineElement: HTMLElement, clientX: number): boolean {
   if (lineElement.dataset.instrumental === "true") {
     // No text to reserve a gutter against - the whole line is a seek target.
     return true;
@@ -199,7 +199,7 @@ function placeGutterBar(lineElement: HTMLElement, edges: TextEdges): void {
  * True when the user currently has a non-empty selection, which means a click event is the tail
  * end of a drag and must not seek.
  */
-export function hasActiveTextSelection(doc: Document): boolean {
+function hasActiveTextSelection(doc: Document): boolean {
   const selection = doc.defaultView?.getSelection();
   return !!selection && !selection.isCollapsed && selection.toString().trim().length > 0;
 }
