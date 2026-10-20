@@ -88,8 +88,13 @@ const FIDELITY_RULE =
   "Stay faithful to what each line says: never add meaning, imagery, details or interpretation that is not in " +
   "the line, and never embellish or explain it. Keep nouns as they are - use their plain, direct equivalent " +
   "(or keep the word as is when it is a name, a loanword, or already common in the target language) instead of " +
-  "swapping in something more poetic. Only the tone is yours to adapt: make it sound like song lyrics, with " +
-  "natural spoken, lyrical phrasing, without changing what is being said. ";
+  "swapping in something more poetic. Translate every word of the line: never drop a word, and never swap it " +
+  "for a different word you made up. When a slang term or suffix is unfamiliar, give its literal dictionary " +
+  "sense (for example 界隈 is the circle, scene or crowd of people around something, as in 最低界隈) rather " +
+  "than guessing something else. Write the translation in the target language's own script and vocabulary: " +
+  "never leave source-language kanji, Hanja or kana in it (圏外 becomes 권외 in Korean, not 圏外), except for " +
+  "names and titles that are conventionally left as they are. Only the tone is yours to adapt: make it sound " +
+  "like song lyrics, with natural spoken, lyrical phrasing, without changing what is being said. ";
 
 const CONTEXT_RULE =
   'The input may also carry a "context" array: other lines of the same song in its main language, given ' +
