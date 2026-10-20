@@ -80,6 +80,17 @@ const MIXED_LANGUAGE_RULE =
   "the song's main language sets its voice: translate the lines in any other language with the same speech " +
   "level, tone, diction and style you use for the main-language lines, so the whole song reads as one singer. ";
 
+/**
+ * Models translating lyrics like to "improve" them: a plain noun becomes a more poetic one, an image
+ * the line never had gets added. Only the voice should be adapted to a song; what is said must not.
+ */
+const FIDELITY_RULE =
+  "Stay faithful to what each line says: never add meaning, imagery, details or interpretation that is not in " +
+  "the line, and never embellish or explain it. Keep nouns as they are - use their plain, direct equivalent " +
+  "(or keep the word as is when it is a name, a loanword, or already common in the target language) instead of " +
+  "swapping in something more poetic. Only the tone is yours to adapt: make it sound like song lyrics, with " +
+  "natural spoken, lyrical phrasing, without changing what is being said. ";
+
 const CONTEXT_RULE =
   'The input may also carry a "context" array: other lines of the same song in its main language, given ' +
   "only so you can hear that voice. Never translate them and never return them. ";
@@ -106,6 +117,7 @@ function buildPrompt(
     "do not translate idioms word-for-word. Keep proper nouns, names and interjections. " +
     "If a line is already in the target language, or is only punctuation/symbols, return it unchanged. " +
     "Text inside quotation marks or brackets (「」, 『』, “”) is still lyric text and must be translated. " +
+    FIDELITY_RULE +
     MIXED_LANGUAGE_RULE +
     (ctx.length > 0 ? CONTEXT_RULE : "") +
     'The input is {"lines": [{"id": 0, "text": "..."}, ...]}. Return ONLY a JSON object of the form ' +
@@ -484,6 +496,7 @@ function buildRevisionPrompt(
     "and never leave a verb in bare dictionary form to connect phrases - use spoken endings and connective forms " +
     "(~고, ~서, ~며, ~아/어) instead. Choose ONE speech level for the whole song (casual 반말 or polite ~요) and use " +
     "it consistently, but vary the specific endings. " +
+    FIDELITY_RULE +
     MIXED_LANGUAGE_RULE +
     (ctx.length > 0 ? CONTEXT_RULE : "") +
     "Where the source repeats a grammatical pattern, keep the " +
