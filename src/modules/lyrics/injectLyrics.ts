@@ -146,6 +146,8 @@ export function processLyrics(
  * @param [data.source] - Source attribution for lyrics
  * @param [data.sourceHref] - URL for source link
  */
+let latestInjectionSerial = 0;
+
 function injectLyrics(
   doc: Document,
   data: LyricSourceResultWithMeta,
@@ -153,7 +155,14 @@ function injectLyrics(
   signal?: AbortSignal
 ): void {
   const injectionId = AppState.currentInjectionId;
-  const isStale = () => AppState.currentInjectionId !== injectionId;
+  // `currentInjectionId` only moves when a new song starts loading. The same song is injected twice
+  // when YouTube Music's own lyrics stand in while the synced ones load, and the first of those must
+  // count as stale the moment the second begins: its translation and furigana batches are still in
+  // flight, indexed against the stand-in lyrics, and would otherwise write into the shared
+  // per-index decorations the Picture-in-Picture window builds from (the side panel is unaffected:
+  // its elements are gone) - one line off, the way a leading instrumental line shows it.
+  const serial = ++latestInjectionSerial;
+  const isStale = () => AppState.currentInjectionId !== injectionId || serial !== latestInjectionSerial;
 
   const lyrics = data.lyrics!;
   cleanup();
@@ -526,6 +535,9 @@ async function processBatchTranslationsAndRomanizations(
       // no-op if the line already has furigana.
       const done = romaji ? await annotateFuriganaFromRomaji(lineData, text, romaji) : false;
       if (!done) await annotateFurigana(lineData, text);
+      // The annotation awaited a dictionary load or a request: the injection may have been replaced
+      // meanwhile, and its decorations then belong to lines that are no longer there.
+      if (isStale()) return;
       const furigana = readFuriganaRuns(lineData);
       if (furigana.length > 0) recordLyricDecoration(index, { furigana });
     }
