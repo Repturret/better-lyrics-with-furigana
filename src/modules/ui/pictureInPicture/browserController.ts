@@ -26,6 +26,7 @@ const PIP_STRING_KEYS = [
   "picture_in_picture_play",
   "picture_in_picture_pause",
   "picture_in_picture_next",
+  "lyrics_copied",
 ] as const;
 let hasInitializedAutoRestore = false;
 let hasAttemptedAutoRestore = false;

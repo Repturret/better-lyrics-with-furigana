@@ -1,12 +1,9 @@
 import { DISABLE_EFFECTS_STYLE_ID, FOOTER_CLASS } from "@constants";
 import { CUSTOM_THEME_STYLE_ID } from "@braccato/core/constants";
-import {
-  createLyricsRenderer,
-  injectRomanization,
-  injectTranslation,
-  type Lyric,
-  type LyricsRenderer,
-} from "@braccato/core";
+import { createLyricsRenderer, injectRomanization, type Lyric, type LyricsRenderer } from "@braccato/core";
+import { applyFuriganaRuns } from "@modules/lyrics/furiganaDom";
+import { attachLineInteractions } from "@modules/lyrics/lineInteractions";
+import { upsertTranslation } from "@modules/lyrics/translationDom";
 import { onLyrics, type PictureInPictureLyricsPayload } from "./bridge";
 import { PictureInPictureController } from "./controller";
 import { PictureInPictureLyricsView } from "./lyricsView";
@@ -184,6 +181,15 @@ export function createPictureInPictureHost(
       noLyrics: lyricsPayload?.noLyrics === true,
     });
     applyDecorations();
+    const builtContainer = renderer.container;
+    if (builtContainer) {
+      // The container is new on every build, so its listeners are too (the per-document ones are
+      // installed once). Seek itself is the core's own per-line click, through this window's host.
+      attachLineInteractions(builtContainer, {
+        copiedLabel: () => environment.view.translate("lyrics_copied"),
+        log: (...args) => environment.view.log(...args),
+      });
+    }
     syncSourceFooter();
     // The decorations and the footer both land after the build measured itself, and both add height.
     measureLyrics();
@@ -242,7 +248,13 @@ export function createPictureInPictureHost(
         );
       }
       if (decoration.translation) {
-        injectTranslation(pipDocument, line.lyricElement, decoration.translation);
+        // Replaced, not injected: the core's injector leaves a line that already has a translation
+        // alone, and a later one (the LLM's, then its revision) has to be able to take its place.
+        upsertTranslation(pipDocument, line.lyricElement, decoration.translation);
+      }
+      const text = lyricsPayload?.lyrics?.[Number(index)]?.words;
+      if (decoration.furigana && text) {
+        applyFuriganaRuns(pipDocument, line, text, decoration.furigana);
       }
     }
   }

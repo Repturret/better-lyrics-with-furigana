@@ -127,6 +127,10 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
     // The exact kanji this reading sits over, so a manual edit (furiganaEditing.ts) knows what to
     // key its override on without having to re-derive it from layout.
     rt.dataset.surface = fullText.slice(run.start, run.end);
+    // Where the run sits in the line's text, so the runs on screen can be read back off the DOM
+    // (readFuriganaRuns) and sent on to the Picture-in-Picture window.
+    rt.dataset.start = String(run.start);
+    rt.dataset.end = String(run.end);
     rt.append(run.reading);
     const highlight = doc.createElement("span");
     highlight.className = FURIGANA_HIGHLIGHT_CLASS;
@@ -156,6 +160,32 @@ export function existingReadings(line: LineData): string[] {
     line.lyricElement.querySelectorAll<HTMLElement>(`.${FURIGANA_CLASS}`),
     el => el.dataset.reading ?? ""
   );
+}
+
+/** The runs a line currently shows, read back off its readings. */
+export function readFuriganaRuns(line: LineData): FuriganaRun[] {
+  return Array.from(line.lyricElement.querySelectorAll<HTMLElement>(`.${FURIGANA_CLASS}`), el => ({
+    start: Number(el.dataset.start),
+    end: Number(el.dataset.end),
+    reading: el.dataset.reading ?? "",
+  })).filter(run => Number.isFinite(run.start) && Number.isFinite(run.end) && run.end > run.start && run.reading);
+}
+
+/**
+ * Makes a line show exactly `runs`: a no-op when it already does, otherwise its readings are
+ * replaced. What the Picture-in-Picture window calls for the runs the side panel worked out - it
+ * builds its own line elements and has none of the reading pipeline, only these results.
+ */
+export function applyFuriganaRuns(doc: Document, line: LineData, fullText: string, runs: FuriganaRun[]): boolean {
+  const current = readFuriganaRuns(line);
+  if (
+    current.length === runs.length &&
+    current.every((c, i) => c.start === runs[i].start && c.end === runs[i].end && c.reading === runs[i].reading)
+  ) {
+    return false;
+  }
+  removeFurigana(line);
+  return attachFuriganaRuns(doc, line, fullText, runs) > 0;
 }
 
 export function removeFurigana(line: LineData): void {

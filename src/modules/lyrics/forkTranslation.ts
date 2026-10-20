@@ -4,10 +4,9 @@
  * optionally a second pass that rewrites them as spoken language. Every step is best-effort: when
  * the mode is off, there is no API key, or a request fails, what is already on screen stays.
  */
-import { TRANSLATED_LYRICS_CLASS } from "@constants";
 import { AppState } from "@core/appState";
 import { getLlmConfig, reviseTranslationWithLlm, translateLinesWithLlm } from "@modules/lyrics/llmTranslation";
-import { injectTranslation } from "@braccato/core";
+import { upsertTranslation } from "@modules/lyrics/translationDom";
 
 export interface LlmTranslationLine {
   index: number;
@@ -32,16 +31,6 @@ interface LlmTranslationPass {
   onTranslation: (index: number, text: string) => void;
   onApplied: () => void;
   signal?: AbortSignal;
-}
-
-/** Replace the translation row's text in place, or add it if not present yet. */
-function upsertTranslation(doc: Document, lyricElement: HTMLElement, text: string): void {
-  const existing = lyricElement.querySelector<HTMLElement>(`.${TRANSLATED_LYRICS_CLASS}`);
-  if (existing) {
-    if (existing.textContent !== text) existing.textContent = text;
-    return;
-  }
-  injectTranslation(doc, lyricElement, text);
 }
 
 /**

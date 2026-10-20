@@ -37,6 +37,7 @@ import {
 } from "@modules/lyrics/furigana";
 import { getLlmConfig, furiganaWithLlm } from "@modules/lyrics/llmTranslation";
 import { runLlmTranslationPass, type LlmTranslationLine } from "@modules/lyrics/forkTranslation";
+import { type FuriganaRun, readFuriganaRuns } from "@modules/lyrics/furiganaDom";
 import { attachFuriganaEditing } from "@modules/lyrics/furiganaEditing";
 import { attachLineInteractions } from "@modules/lyrics/lineInteractions";
 import { lyricsElementAdded, mainView } from "@modules/ui/mainLyricsView";
@@ -58,6 +59,8 @@ interface LyricLineDecoration {
   romanization?: string;
   timedRomanization?: LyricPart[];
   translation?: string;
+  /** The furigana readings the side panel worked out for this line (the window has no pipeline). */
+  furigana?: FuriganaRun[];
 }
 
 /**
@@ -177,7 +180,11 @@ function injectLyrics(
 
   const lyricsContainer = lyricsWrapper.querySelector<HTMLElement>(`.${LYRICS_CLASS}`);
   if (lyricsContainer) {
-    attachLineInteractions(lyricsContainer);
+    attachLineInteractions(lyricsContainer, {
+      copiedLabel: () => t("lyrics_copied"),
+      // `logCore` is reassigned when the logging setting changes, so it is read at call time.
+      log: (...args) => logCore(...args),
+    });
     attachFuriganaEditing(lyricsContainer);
   }
 
@@ -506,7 +513,7 @@ async function processBatchTranslationsAndRomanizations(
         });
 
   if (furiganaLines.length > 0) {
-    for (const { lineData, text } of furiganaLines) {
+    for (const { index, lineData, text } of furiganaLines) {
       if (isStale()) return;
       let romaji = getRomanizationFromCache(text);
       if (!romaji) {
@@ -519,8 +526,11 @@ async function processBatchTranslationsAndRomanizations(
       // no-op if the line already has furigana.
       const done = romaji ? await annotateFuriganaFromRomaji(lineData, text, romaji) : false;
       if (!done) await annotateFurigana(lineData, text);
+      const furigana = readFuriganaRuns(lineData);
+      if (furigana.length > 0) recordLyricDecoration(index, { furigana });
     }
     lyricsElementAdded();
+    publishPictureInPictureLyrics();
   }
 
   // AI furigana: everything above stays as the first answer; once the LLM's sung readings arrive
@@ -528,10 +538,15 @@ async function processBatchTranslationsAndRomanizations(
   const pairsByLine = await llmFuriganaRequest;
   if (pairsByLine && !isStale()) {
     let changed = 0;
-    furiganaLines.forEach(({ lineData, text }, i) => {
-      if (applyLlmFurigana(lineData, text, pairsByLine[i] ?? [])) changed++;
+    furiganaLines.forEach(({ index, lineData, text }, i) => {
+      if (!applyLlmFurigana(lineData, text, pairsByLine[i] ?? [])) return;
+      changed++;
+      recordLyricDecoration(index, { furigana: readFuriganaRuns(lineData) });
     });
-    if (changed > 0) lyricsElementAdded();
+    if (changed > 0) {
+      lyricsElementAdded();
+      publishPictureInPictureLyrics();
+    }
   }
 
   await llmTranslationTask;
