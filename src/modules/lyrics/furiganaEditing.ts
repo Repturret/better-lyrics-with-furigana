@@ -40,7 +40,8 @@ function persist(): void {
 function commitEdit(rt: HTMLElement, input: HTMLInputElement, surface: string): void {
   const doc = rt.ownerDocument;
   const value = input.value.trim();
-  input.replaceWith(rt);
+  input.remove();
+  rt.style.removeProperty("visibility");
   doc.defaultView?.getSelection()?.removeAllRanges();
   if (!value || value === rt.dataset.reading) return;
 
@@ -87,7 +88,11 @@ function openEditor(rt: HTMLElement): void {
   });
   input.addEventListener("blur", () => commitEdit(rt, input, surface), { once: true });
 
-  rt.replaceWith(input);
+  // The reading stays in the DOM, just hidden, with the field beside it: taking it out would
+  // disconnect its sweep element, and the sweep drops anything it finds disconnected, so the
+  // corrected reading would come back with its fill animation gone for good.
+  rt.style.visibility = "hidden";
+  rt.after(input);
   input.focus();
   input.select();
 }
