@@ -1,6 +1,6 @@
 import { LOG_PREFIX } from "@constants";
 import { logCore as log } from "@core/logger";
-import { getFuriganaOverride } from "@modules/lyrics/furiganaEditing";
+import { getReadingOverride } from "@modules/exceptions/store";
 import type { LineData } from "@braccato/core";
 import {
   attachFuriganaRuns,
@@ -668,7 +668,7 @@ export function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
  *  above, exactly on the run it was made for. */
 function applyUserOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
   return runs.map(run => {
-    const reading = getFuriganaOverride(fullText.slice(run.start, run.end));
+    const reading = getReadingOverride(fullText.slice(run.start, run.end));
     return reading && reading !== run.reading ? { ...run, reading } : run;
   });
 }

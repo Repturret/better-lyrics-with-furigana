@@ -228,7 +228,7 @@ v2.4.0.9로 이식할 때의 기준 명세이며, 이식 계획은 [PORTING_PLAN
 ## 9. v2.4.0.9 포트에서 추가·변경된 점 (`port/2.4.0.9`)
 
 - **UtaTen 제외**: `utatenFurigana.ts`와 `host_permissions`의 utaten.com 항목은 포트에 없다. 위 1.7과 `furiganaSource` 설명은 `my-changes` 기준이다.
-- **후리가나**: 코어 렌더러 위의 오버레이(`furiganaDom.ts`, 세계 무관). 스윕은 단어별 세그먼트 진행률을 프레임마다 계산, 창 크기/웹폰트 변화 시 `reflowFurigana`. 더블클릭 수정은 `furiganaEditing.ts`(메인 전용, 키 `furiganaUserOverrides`).
+- **후리가나**: 코어 렌더러 위의 오버레이(`furiganaDom.ts`, 세계 무관). 스윕은 단어별 세그먼트 진행률을 프레임마다 계산, 창 크기/웹폰트 변화 시 `reflowFurigana`. 더블클릭 수정은 `furiganaEditing.ts`(메인 전용). 저장은 예외 저장소 `modules/exceptions/store.ts`(키 `blyricsExceptions`)이고, 이전 키 `furiganaUserOverrides`는 첫 로드 때 자동 이전된다(구 키는 삭제하지 않음).
 - **번역 출처 배지**: 단계(official/google/llm/revised)를 `data-stage`로 달고 툴팁에 이전 번역 이력을 표시. 가사 아래 독 토글(`translationSource`, 저장 키 `isTranslationSourceBadgeEnabled`)로 ON/OFF, PiP에도 전달.
 - **시크 거터/복사**: `lineInteractions.ts`(세계 무관). 캡처 단계 클릭 필터, 호버 진입 시 한 번 측정해 캐시하는 거터, 복사 토스트.
 - **번역 프롬프트**: 충실성(뜻을 만들지 않음, 명사 유지, 모든 단어 번역, 원문 문자 남기지 않음), 혼합 언어 어투 맞춤, 앞뒤 문맥 전달. 미번역 에코 방지 `looksUntranslated`.
