@@ -14,7 +14,7 @@
 
 1. **후리가나 읽기 예외**: 정적 표와 같은 형식(매치 문자열, 한자 구간, 읽기)을 UI에서 편집. 한자 덩어리 단위인 지금의 더블클릭 수정은 "매치 = 덩어리 전체"인 특수 경우로 흡수.
 2. **번역 용어집**: `원문 용어 → 대상 언어 표기`(+ 선택 메모), 대상 언어별. LLM 프롬프트에 "다음 용어는 반드시 이렇게 번역" 블록으로 주입하고, 결과에 빠졌으면 수정 패스에서 지적. Google 번역 경로에서는 적용하지 않음(한계로 명시).
-3. **곡별 설정**: 곡 ID 단위의 원문 언어 고정, 로마자/번역 끄기, 후리가나 끄기. 언어 오판정 곡을 고치는 용도.
+3. **곡별 설정**: 곡 ID 단위의 원문 언어 고정, 로마자/번역 끄기, 후리가나 끄기, **가사 제공자 제외**(서버가 다른 곡 가사를 돌려주는 곡에서 해당 제공자를 건너뜀. 예: 孤独の鯨에서 Portato가 愛の賞味期限 가사를 반환). 언어 오판정과 제공자 오매칭을 곡 단위로 고치는 용도.
 4. 공통: 범위(전역 / 이 곡만), 활성 토글, 가져오기·내보내기(JSON), 검색, 일괄 삭제.
 
 ## 3. 데이터 모델 (`chrome.storage.local`, 키 `blyricsExceptions`, 버전 필드 포함)
@@ -24,7 +24,7 @@ type ExceptionStore = {
   version: 1;
   reading: Array<{ id: string; match: string; start: number; end: number; reading: string; songId?: string; enabled: boolean }>;
   glossary: Array<{ id: string; term: string; target: string; lang: string; note?: string; songId?: string; enabled: boolean }>;
-  song: Record<string, { sourceLanguage?: string; romanization?: boolean; translation?: boolean; furigana?: boolean }>;
+  song: Record<string, { excludedProviders?: string[]; sourceLanguage?: string; romanization?: boolean; translation?: boolean; furigana?: boolean }>;
 };
 ```
 
@@ -37,6 +37,7 @@ type ExceptionStore = {
 - `src/modules/exceptions/store.ts` — 스키마, 로드/저장, 마이그레이션, `chrome.storage.onChanged` 구독으로 열린 탭에 즉시 반영. **순수 함수**(매치 계산 등)와 I/O를 분리해 셀프체크 가능하게 한다.
 - `furigana.ts`: `applyUserOverrides`를 `store`의 `reading` 조회로 교체(곡 ID 전달 필요: `annotateFurigana*` 호출부에서 현재 곡 ID 주입).
 - `llmTranslation.ts`: `buildPrompt`에 용어집 블록 추가, 캐시 키에 용어집 해시 포함(용어집이 바뀌면 재번역).
+- `lyrics.ts` / `providers/unified.ts`: 곡별 `excludedProviders`를 제공자 후보 목록(`mergePreferredProviders`가 만드는 선호 목록, 비활성은 `d_` 접두)에서 이 곡에 한해 뺀다. 제외 후 후보가 비면 제외를 무시하고 안내 로그. 설정 변경 시 소프트 리로드(제공자 전환과 같은 경로)로 다시 가져온다.
 - `injectLyrics.ts`: 곡별 설정을 `scriptContradicts`/`isDefaultLanguage` 판정보다 먼저 적용.
 - PiP: 후리가나/번역은 이미 ISOLATED에서 계산해 payload로 보내므로 **편집 UI는 메인 전용**, 결과만 PiP로 흐른다(지금의 더블클릭과 같은 제약).
 
@@ -55,7 +56,7 @@ type ExceptionStore = {
 | E1 | `store.ts` + 마이그레이션 + 셀프체크, 후리가나 조회 교체(동작 변화 없음) | S | 셀프체크, 기존 더블클릭 수정이 그대로 동작 |
 | E2 | 옵션 "예외" 탭: 후리가나 섹션(목록/추가/삭제/토글/가져오기·내보내기) | M | 브라우저: 추가한 읽기가 열린 가사에 즉시 반영 |
 | E3 | 번역 용어집(프롬프트 주입 + 캐시 키 + 수정 패스 지적) + UI 섹션 | M | 界隈 예시로 AI 번역 확인, Google 경로 미적용 안내 |
-| E4 | 곡별 설정(+ 곡 ID 확보 경로 확인) + UI 섹션 | M | 언어 오판정 곡에서 고정 효과 |
+| E4 | 곡별 설정(+ 곡 ID 확보 경로 확인) + 제공자 제외 + UI 섹션. 가사 옆 제공자 선택기(`1/6` 목록)에서 "이 곡에서 제외" 바로가기 | M | 언어 오판정 곡에서 고정 효과, Portato 제외 후 孤独の鯨가 다음 제공자로 가져오는지 |
 | E5 | 가사 위 빠른 추가(더블클릭 범위 선택, 우클릭 용어 지정) | M | 브라우저 + PiP에서 결과 반영 확인 |
 
 ## 7. 열린 질문
