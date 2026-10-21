@@ -1796,5 +1796,82 @@
   "unison_vote_plural": {
     "message": "표",
     "description": "Plural noun used after numbers other than 1 in the Unison vote count (e.g. '5 votes')"
+  },
+  "options_tab_exceptions": {
+    "message": "예외",
+    "description": "Exceptions settings tab label"
+  },
+  "options_exceptions_title": {
+    "message": "예외 처리",
+    "description": "Heading of the exceptions tab"
+  },
+  "options_exceptions_description": {
+    "message": "확장이 만든 결과를 직접 고치는 설정입니다. 모든 곡에 적용되며, 다음에 가사를 불러올 때 반영됩니다.",
+    "description": "Description of the exceptions tab"
+  },
+  "options_exceptions_reading_title": {
+    "message": "후리가나 읽기",
+    "description": "Exceptions tab: furigana section heading"
+  },
+  "options_exceptions_reading_hint": {
+    "message": "문맥은 선택입니다. 문맥을 被告人前, 대상을 前로 하면 被告人 뒤의 前에만 적용됩니다. 한자 묶음의 일부만 지정하면 나머지 부분의 읽기도 따로 규칙을 만들어야 합니다.",
+    "description": "Exceptions tab: how the furigana form works"
+  },
+  "options_exceptions_context_placeholder": {
+    "message": "문맥 (선택)",
+    "description": "Placeholder of the furigana context field"
+  },
+  "options_exceptions_target_placeholder": {
+    "message": "대상 한자",
+    "description": "Placeholder of the furigana target field"
+  },
+  "options_exceptions_reading_placeholder": {
+    "message": "읽기 (히라가나)",
+    "description": "Placeholder of the furigana reading field"
+  },
+  "options_exceptions_add": {
+    "message": "추가",
+    "description": "Button that adds a furigana exception"
+  },
+  "options_exceptions_search": {
+    "message": "검색",
+    "description": "Placeholder of the exceptions search field"
+  },
+  "options_exceptions_export": {
+    "message": "내보내기",
+    "description": "Button that saves the exceptions to a file"
+  },
+  "options_exceptions_import": {
+    "message": "가져오기",
+    "description": "Button that loads exceptions from a file"
+  },
+  "options_exceptions_empty": {
+    "message": "아직 예외가 없습니다. 가사에서 후리가나를 더블클릭해 추가할 수도 있습니다.",
+    "description": "Empty state of the exceptions list"
+  },
+  "options_exceptions_enabled": {
+    "message": "사용",
+    "description": "Tooltip of the exception on/off checkbox"
+  },
+  "options_exceptions_delete": {
+    "message": "삭제",
+    "description": "Tooltip of the exception delete button"
+  },
+  "options_exceptions_invalid": {
+    "message": "대상은 문맥에 포함되어야 하고 읽기는 비울 수 없습니다.",
+    "description": "Error shown when an exception form is incomplete"
+  },
+  "options_exceptions_import_failed": {
+    "message": "예외 내보내기 파일이 아닙니다.",
+    "description": "Error shown when an imported file is not valid"
+  },
+  "options_exceptions_import_done": {
+    "message": "$COUNT$개 항목을 가져왔습니다",
+    "description": "Status after importing exceptions",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   }
 }

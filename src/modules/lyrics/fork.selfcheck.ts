@@ -15,7 +15,7 @@ for (const name of [
 }
 
 const { looksUntranslated } = await import("./forkTranslation");
-const { alignKanjiRuns, applyOverrides, hasKana, shouldFurigana } = await import("./furigana");
+const { alignKanjiRuns, applyContextReadings, applyOverrides, hasKana, shouldFurigana } = await import("./furigana");
 const { parseIndexedLines } = await import("./llmTranslation");
 
 const readingAt = (runs: { offset: number; end: number; reading: string }[], offset: number) =>
@@ -40,6 +40,21 @@ const override = (text: string) => applyOverrides(text, []).map(run => `${run.st
 assert.deepEqual(override("君"), ["0:きみ"], "bare 君 is きみ");
 assert.deepEqual(override("星街"), ["0:ほしまち"], "星街 is ほしまち");
 assert.deepEqual(override("被告人前"), ["0:ひこくじん", "3:まえ"], "被告人前 splits around the touching kanji");
+
+// A user rule with a context re-reads only its target and leaves neighbouring runs alone.
+const contextRuns = applyContextReadings(
+  "被告人前",
+  [
+    { start: 0, end: 3, reading: "ひこくじん" },
+    { start: 3, end: 4, reading: "ぜん" },
+  ],
+  [{ match: "被告人前", start: 3, end: 4, reading: "まえ" }]
+);
+assert.deepEqual(
+  contextRuns.map(run => `${run.start}:${run.reading}`),
+  ["0:ひこくじん", "3:まえ"],
+  "context rule changes only its target"
+);
 
 // Untranslated echo guard.
 assert.ok(looksUntranslated("圏外", "圏外", "ko"), "an echoed CJK line is untranslated");

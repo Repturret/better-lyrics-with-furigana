@@ -3,7 +3,20 @@ import { strict as assert } from "node:assert";
 // The store imports the logger and extension constants; stub the globals they only touch when run.
 const stub: any = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => stub });
 Object.assign(globalThis, { chrome: stub });
-const { emptyStore, findReading, migrateLegacyReadings, normalizeStore, withReading } = await import("./store");
+const {
+  buildReadingEntry,
+  contextReadings,
+  emptyStore,
+  findReading,
+  mergeStores,
+  migrateLegacyReadings,
+  normalizeStore,
+  parseExport,
+  withEntry,
+  withEntryEnabled,
+  withReading,
+  withoutEntry,
+} = await import("./store");
 
 // The old kanji-run map becomes whole-run entries.
 const migrated = migrateLegacyReadings({ 星街: "ほしまち", "": "x", 君: "" });
@@ -43,5 +56,29 @@ assert.equal(messy.reading[0].enabled, true, "enabled defaults to true");
 assert.equal(messy.glossary.length, 1, "malformed glossary entries are dropped");
 assert.deepEqual(messy.song, {}, "a non-object song map is reset");
 assert.deepEqual(normalizeStore("garbage"), emptyStore(), "non-object input gives an empty store");
+
+// A context entry names its target inside the context; a target outside it is refused.
+const scoped = buildReadingEntry("被告人前", "前", "まえ");
+assert.ok(scoped, "target found in context");
+assert.deepEqual([scoped?.start, scoped?.end], [3, 4], "range is the target inside the context");
+assert.equal(buildReadingEntry("被告人", "前", "まえ"), null, "target outside the context is refused");
+assert.equal(buildReadingEntry("", "君", "きみ")?.match, "君", "no context means the target alone");
+assert.equal(buildReadingEntry("", "君", "  "), null, "blank reading is refused");
+
+// Only context entries go to the pipeline; whole-run ones are looked up exactly.
+let mixed = withEntry(withReading(emptyStore(), "君", "きみ"), scoped!);
+assert.equal(contextReadings(mixed).length, 1, "whole-run entries are not context entries");
+mixed = withEntryEnabled(mixed, scoped!.id, false);
+assert.equal(contextReadings(mixed).length, 0, "disabled context entries are skipped");
+assert.equal(withoutEntry(mixed, scoped!.id).reading.length, 1, "entry removed by id");
+
+// Export round trip and merge.
+const exported = JSON.stringify(mixed);
+const reparsed = parseExport(exported);
+assert.equal(reparsed?.reading.length, 2, "an export reads back");
+assert.equal(parseExport("{}"), null, "a file without the version marker is refused");
+assert.equal(parseExport("not json"), null, "non-JSON is refused");
+const merged = mergeStores(withReading(emptyStore(), "君", "くん"), withReading(emptyStore(), "君", "きみ"));
+assert.equal(findReading(merged, "君"), "きみ", "imported entry replaces the same one");
 
 console.log("exceptions store selfcheck passed");

@@ -18,7 +18,7 @@ const EXCEPTIONS_KEY = "blyricsExceptions";
 const LEGACY_READINGS_KEY = "furiganaUserOverrides";
 
 /** A reading for `match.slice(start, end)`, applied wherever `match` occurs. */
-type ReadingException = {
+export type ReadingException = {
   id: string;
   match: string;
   start: number;
@@ -131,6 +131,67 @@ export function withReading(store: ExceptionStore, surface: string, reading: str
   return { ...store, reading: [...store.reading.filter(existing => existing.id !== entry.id), entry] };
 }
 
+/**
+ * A reading for `target` as it occurs inside `context` (the context is what makes the rule narrow:
+ * 前 is まえ only after 被告人). An empty context means the target stands alone. Null when the target
+ * is not part of the context or a field is blank.
+ */
+export function buildReadingEntry(
+  context: string,
+  target: string,
+  reading: string,
+  songId?: string
+): ReadingException | null {
+  const match = context.trim() || target.trim();
+  const part = target.trim();
+  const start = match.indexOf(part);
+  if (!part || start < 0) return null;
+  return normalizeReading({ match, start, end: start + part.length, reading: reading.trim(), songId, enabled: true });
+}
+
+/** Adds an entry, replacing the one with the same id (same match, range and scope). */
+export function withEntry(store: ExceptionStore, entry: ReadingException): ExceptionStore {
+  return { ...store, reading: [...store.reading.filter(existing => existing.id !== entry.id), entry] };
+}
+
+export function withoutEntry(store: ExceptionStore, id: string): ExceptionStore {
+  return { ...store, reading: store.reading.filter(entry => entry.id !== id) };
+}
+
+export function withEntryEnabled(store: ExceptionStore, id: string, enabled: boolean): ExceptionStore {
+  return { ...store, reading: store.reading.map(entry => (entry.id === id ? { ...entry, enabled } : entry)) };
+}
+
+/** Entries that name a context beyond the run itself, for the song at hand. The double-click
+ *  corrections cover a whole run and are looked up exactly instead (`findReading`). */
+export function contextReadings(store: ExceptionStore, songId?: string): ReadingException[] {
+  return store.reading.filter(
+    entry =>
+      entry.enabled &&
+      !(entry.start === 0 && entry.end === entry.match.length) &&
+      (entry.songId === undefined || entry.songId === songId)
+  );
+}
+
+/** Parses an exported file; null when it is not an exceptions file at all. */
+export function parseExport(text: string): ExceptionStore | null {
+  try {
+    const raw: unknown = JSON.parse(text);
+    return isRecord(raw) && raw.version === 1 ? normalizeStore(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Imported entries win over existing ones with the same id; everything else is kept. */
+export function mergeStores(base: ExceptionStore, incoming: ExceptionStore): ExceptionStore {
+  const incomingIds = new Set(incoming.reading.map(entry => entry.id));
+  return {
+    ...base,
+    reading: [...base.reading.filter(entry => !incomingIds.has(entry.id)), ...incoming.reading],
+  };
+}
+
 // -- Storage ---------------------------------------------------------------
 
 let current = emptyStore();
@@ -166,6 +227,16 @@ async function saveExceptions(next: ExceptionStore): Promise<void> {
   } catch (error) {
     log(LOG_PREFIX, "Failed to save exceptions", error);
   }
+}
+
+/** The store as last loaded or saved. */
+export function getExceptions(): ExceptionStore {
+  return current;
+}
+
+/** Applies a change to the store and saves it. */
+export async function updateExceptions(change: (store: ExceptionStore) => ExceptionStore): Promise<void> {
+  await saveExceptions(change(current));
 }
 
 /** The reading to use for a kanji run, if the user has set one. */

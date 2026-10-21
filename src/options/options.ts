@@ -23,6 +23,7 @@ import { mergePreferredProviders } from "@modules/lyrics/providers/providerList"
 import { fetchOwnGamification, renderIdentityStats } from "@modules/unison/gamificationRender";
 import Sortable from "sortablejs";
 import { showModal } from "./editor/ui/feedback";
+import { initExceptionsTab } from "./exceptions";
 import { initStoreUI, setupYourThemesButton } from "./store/store";
 import { errorCore, warnCore } from "@core/logger";
 
@@ -922,6 +923,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initStoreUI();
   setupYourThemesButton();
   initLangExclusionsModal();
+  void initExceptionsTab();
 
   document.getElementById("browse-themes-btn")?.addEventListener("click", () => {
     chrome.tabs.create({

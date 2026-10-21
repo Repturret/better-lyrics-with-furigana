@@ -1828,5 +1828,83 @@
   "unison_vote_plural": {
     "message": "votes",
     "description": "Plural noun used after numbers other than 1 in the Unison vote count (e.g. '5 votes')"
+  },
+
+  "options_tab_exceptions": {
+    "message": "Exceptions",
+    "description": "Exceptions settings tab label"
+  },
+  "options_exceptions_title": {
+    "message": "Exceptions",
+    "description": "Heading of the exceptions tab"
+  },
+  "options_exceptions_description": {
+    "message": "Your own corrections to what the extension produces. They apply on every song and take effect on the next lyrics load.",
+    "description": "Description of the exceptions tab"
+  },
+  "options_exceptions_reading_title": {
+    "message": "Furigana readings",
+    "description": "Exceptions tab: furigana section heading"
+  },
+  "options_exceptions_reading_hint": {
+    "message": "Context is optional: with 被告人前 as the context and 前 as the target, 前 gets the reading only after 被告人. A reading for part of a kanji compound needs a rule for the rest of the compound too.",
+    "description": "Exceptions tab: how the furigana form works"
+  },
+  "options_exceptions_context_placeholder": {
+    "message": "Context (optional)",
+    "description": "Placeholder of the furigana context field"
+  },
+  "options_exceptions_target_placeholder": {
+    "message": "Kanji",
+    "description": "Placeholder of the furigana target field"
+  },
+  "options_exceptions_reading_placeholder": {
+    "message": "Reading (hiragana)",
+    "description": "Placeholder of the furigana reading field"
+  },
+  "options_exceptions_add": {
+    "message": "Add",
+    "description": "Button that adds a furigana exception"
+  },
+  "options_exceptions_search": {
+    "message": "Search",
+    "description": "Placeholder of the exceptions search field"
+  },
+  "options_exceptions_export": {
+    "message": "Export",
+    "description": "Button that saves the exceptions to a file"
+  },
+  "options_exceptions_import": {
+    "message": "Import",
+    "description": "Button that loads exceptions from a file"
+  },
+  "options_exceptions_empty": {
+    "message": "No exceptions yet. Double-click a furigana reading in the lyrics to add one.",
+    "description": "Empty state of the exceptions list"
+  },
+  "options_exceptions_enabled": {
+    "message": "Enabled",
+    "description": "Tooltip of the exception on/off checkbox"
+  },
+  "options_exceptions_delete": {
+    "message": "Delete",
+    "description": "Tooltip of the exception delete button"
+  },
+  "options_exceptions_invalid": {
+    "message": "The target must be part of the context, and the reading must not be empty.",
+    "description": "Error shown when an exception form is incomplete"
+  },
+  "options_exceptions_import_failed": {
+    "message": "That file is not an exceptions export.",
+    "description": "Error shown when an imported file is not valid"
+  },
+  "options_exceptions_import_done": {
+    "message": "Imported $COUNT$ entries",
+    "description": "Status after importing exceptions",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   }
 }

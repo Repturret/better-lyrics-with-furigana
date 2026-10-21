@@ -49,6 +49,9 @@
 				<button class="tab" id="sources-tab" data-target="#sources-content">
 					__MSG_options_tab_sources__
 				</button>
+				<button class="tab" id="exceptions-tab" data-target="#exceptions-content">
+					__MSG_options_tab_exceptions__
+				</button>
 				<button class="tab" id="identity-tab" data-target="#identity-content">
 					__MSG_options_tab_identity__
 				</button>
@@ -436,6 +439,28 @@
 							</svg>
 							<span>__MSG_options_manage__</span>
 						</button>
+					</div>
+				</div>
+			</div>
+			<div class="tab-content" id="exceptions-content">
+				<div class="settings-group">
+					<h2>__MSG_options_exceptions_title__</h2>
+					<p>__MSG_options_exceptions_description__</p>
+					<h3 class="exceptions-heading">__MSG_options_exceptions_reading_title__</h3>
+					<p class="exceptions-hint">__MSG_options_exceptions_reading_hint__</p>
+					<div class="exceptions-form">
+						<input type="text" id="exceptions-context" placeholder="__MSG_options_exceptions_context_placeholder__" class="exceptions-input">
+						<input type="text" id="exceptions-target" placeholder="__MSG_options_exceptions_target_placeholder__" class="exceptions-input">
+						<input type="text" id="exceptions-reading" placeholder="__MSG_options_exceptions_reading_placeholder__" class="exceptions-input">
+						<button id="exceptions-add" class="modal-btn modal-btn-secondary" type="button">__MSG_options_exceptions_add__</button>
+					</div>
+					<p id="exceptions-status" class="exceptions-status" role="status"></p>
+					<input type="text" id="exceptions-search" placeholder="__MSG_options_exceptions_search__" class="exceptions-input exceptions-search">
+					<div id="exceptions-reading-list" class="exceptions-list"></div>
+					<div class="button-row">
+						<button id="exceptions-export" class="modal-btn modal-btn-secondary" type="button">__MSG_options_exceptions_export__</button>
+						<button id="exceptions-import" class="modal-btn modal-btn-secondary" type="button">__MSG_options_exceptions_import__</button>
+						<input type="file" id="exceptions-import-file" accept="application/json,.json" hidden>
 					</div>
 				</div>
 			</div>
