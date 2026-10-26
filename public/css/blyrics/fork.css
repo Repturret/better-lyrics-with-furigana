@@ -87,8 +87,10 @@
 	font-size: var(--blyrics-furigana-font-size);
 	line-height: 1;
 	text-align: center;
-	color: var(--blyrics-lyric-active-color);
-	background: color-mix(in srgb, canvas 85%, transparent);
+	/* Fixed light-on-dark: the lyric colour is near-white on the dark player, and `canvas` is white
+	 * under a light colour scheme, which made the typed text vanish into its own background. */
+	color: #fff;
+	background: rgba(24, 24, 24, 0.94);
 	border: 1px solid var(--blyrics-lyric-active-color);
 	border-radius: 0.2em;
 	padding: 0.05em 0.2em;
@@ -122,6 +124,8 @@
 	top: 0;
 	width: 100%;
 	pointer-events: none;
+	/* A line that has been sung fades its filled-in reading back to the dim resting look. */
+	transition: opacity var(--blyrics-furigana-fade-duration) ease;
 	color: transparent;
 	-webkit-background-clip: text;
 	background-clip: text;
@@ -274,4 +278,42 @@
 
 .blyrics--copied-toast.blyrics--copied-toast-visible {
 	opacity: 1;
+}
+
+/*
+ * Which version of the translation a line shows: a small badge at the end of its row (only while the
+ * dock's translation-source toggle is on, which sets the attribute on the root), drawn off the
+ * `data-stage` translationDom.ts sets. Hovering it lists every version the line has had (the
+ * row's `title`), the current one marked. Not part of the text: the row's own text is untouched,
+ * and copying skips translation rows altogether.
+ */
+:root[data-blyrics-translation-source] .blyrics--translated[data-stage]::after {
+	display: inline-block;
+	margin-inline-start: 0.6em;
+	padding: 0 0.4em;
+	border: 1px solid currentColor;
+	border-radius: 0.6em;
+	font-size: 0.5em;
+	font-weight: 700;
+	line-height: 1.5;
+	letter-spacing: 0.02em;
+	vertical-align: middle;
+	opacity: 0.5;
+	cursor: help;
+}
+
+:root[data-blyrics-translation-source] .blyrics--translated[data-stage="official"]::after {
+	content: "✓";
+}
+
+:root[data-blyrics-translation-source] .blyrics--translated[data-stage="google"]::after {
+	content: "G";
+}
+
+:root[data-blyrics-translation-source] .blyrics--translated[data-stage="llm"]::after {
+	content: "AI";
+}
+
+:root[data-blyrics-translation-source] .blyrics--translated[data-stage="revised"]::after {
+	content: "AI+";
 }

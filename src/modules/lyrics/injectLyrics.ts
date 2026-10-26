@@ -37,6 +37,13 @@ import {
 } from "@modules/lyrics/furigana";
 import { getLlmConfig, furiganaWithLlm } from "@modules/lyrics/llmTranslation";
 import { runLlmTranslationPass, type LlmTranslationLine } from "@modules/lyrics/forkTranslation";
+import {
+  setTranslationMeta,
+  type TranslationHistoryEntry,
+  type TranslationStage,
+  withTranslationVersion,
+} from "@modules/lyrics/translationDom";
+import { type FuriganaRun, readFuriganaRuns } from "@modules/lyrics/furiganaDom";
 import { attachFuriganaEditing } from "@modules/lyrics/furiganaEditing";
 import { attachLineInteractions } from "@modules/lyrics/lineInteractions";
 import { lyricsElementAdded, mainView } from "@modules/ui/mainLyricsView";
@@ -58,6 +65,11 @@ interface LyricLineDecoration {
   romanization?: string;
   timedRomanization?: LyricPart[];
   translation?: string;
+  /** Where the current translation came from, and the versions it replaced (see translationDom). */
+  translationStage?: TranslationStage;
+  translationHistory?: TranslationHistoryEntry[];
+  /** The furigana readings the side panel worked out for this line (the window has no pipeline). */
+  furigana?: FuriganaRun[];
 }
 
 /**
@@ -68,6 +80,17 @@ export type LyricDecorations = Record<number, LyricLineDecoration>;
 
 function recordLyricDecoration(index: number, decoration: LyricLineDecoration): void {
   AppState.lyricDecorations[index] = { ...AppState.lyricDecorations[index], ...decoration };
+}
+
+/**
+ * Records a line's translation together with where it came from and the versions before it, and
+ * stamps the main view's translation row with the same (the Picture-in-Picture window gets both from
+ * the decoration).
+ */
+function recordTranslation(index: number, lyricElement: HTMLElement, text: string, stage: TranslationStage): void {
+  const translationHistory = withTranslationVersion(AppState.lyricDecorations[index]?.translationHistory, stage, text);
+  recordLyricDecoration(index, { translation: text, translationStage: stage, translationHistory });
+  setTranslationMeta(lyricElement, stage, translationHistory);
 }
 
 function isRomanizationDisabledForLang(lang: string): boolean {
@@ -143,6 +166,8 @@ export function processLyrics(
  * @param [data.source] - Source attribution for lyrics
  * @param [data.sourceHref] - URL for source link
  */
+let latestInjectionSerial = 0;
+
 function injectLyrics(
   doc: Document,
   data: LyricSourceResultWithMeta,
@@ -150,7 +175,14 @@ function injectLyrics(
   signal?: AbortSignal
 ): void {
   const injectionId = AppState.currentInjectionId;
-  const isStale = () => AppState.currentInjectionId !== injectionId;
+  // `currentInjectionId` only moves when a new song starts loading. The same song is injected twice
+  // when YouTube Music's own lyrics stand in while the synced ones load, and the first of those must
+  // count as stale the moment the second begins: its translation and furigana batches are still in
+  // flight, indexed against the stand-in lyrics, and would otherwise write into the shared
+  // per-index decorations the Picture-in-Picture window builds from (the side panel is unaffected:
+  // its elements are gone) - one line off, the way a leading instrumental line shows it.
+  const serial = ++latestInjectionSerial;
+  const isStale = () => AppState.currentInjectionId !== injectionId || serial !== latestInjectionSerial;
 
   const lyrics = data.lyrics!;
   cleanup();
@@ -177,7 +209,13 @@ function injectLyrics(
 
   const lyricsContainer = lyricsWrapper.querySelector<HTMLElement>(`.${LYRICS_CLASS}`);
   if (lyricsContainer) {
-    attachLineInteractions(lyricsContainer);
+    attachLineInteractions(lyricsContainer, {
+      copiedLabel: () => t("lyrics_copied"),
+      // `logCore` is reassigned when the logging setting changes, so it is read at call time.
+      get log() {
+        return logCore;
+      },
+    });
     attachFuriganaEditing(lyricsContainer);
   }
 
@@ -369,7 +407,11 @@ async function processBatchTranslationsAndRomanizations(
 
       if (translationResult && !isSameText(translationResult, item.words)) {
         injectTranslation(doc, lyricElement, translationResult);
-        recordLyricDecoration(index, { translation: translationResult });
+        const isOfficial = !!(
+          matchedLang ||
+          (item.translation && langCodesMatch(targetTranslationLang, item.translation.lang))
+        );
+        recordTranslation(index, lyricElement, translationResult, isOfficial ? "official" : "google");
         didInjectCachedContent = true;
       } else if (sourceLanguage !== targetTranslationLang || containsNonLatin(item.words) || !sourceLanguage) {
         translationBatch.push({ index, text: item.words });
@@ -468,7 +510,7 @@ async function processBatchTranslationsAndRomanizations(
           if (result) {
             const originalIndex = translationBatch[i].index;
             injectTranslation(doc, linesData[originalIndex].lyricElement, result.translatedText);
-            recordLyricDecoration(originalIndex, { translation: result.translatedText });
+            recordTranslation(originalIndex, linesData[originalIndex].lyricElement, result.translatedText, "google");
           }
         });
         lyricsElementAdded();
@@ -494,7 +536,10 @@ async function processBatchTranslationsAndRomanizations(
           sourceLanguage: sourceLanguage ?? undefined,
           isStale,
           isSameText,
-          onTranslation: (index, text) => recordLyricDecoration(index, { translation: text }),
+          contextLines: lyrics.flatMap((item, index) =>
+            !item.isInstrumental && !llmTranslationLines.some(l => l.index === index) ? [item.words] : []
+          ),
+          onTranslation: (index, text, stage) => recordTranslation(index, linesData[index].lyricElement, text, stage),
           onApplied: () => {
             lyricsElementAdded();
             publishPictureInPictureLyrics();
@@ -503,7 +548,7 @@ async function processBatchTranslationsAndRomanizations(
         });
 
   if (furiganaLines.length > 0) {
-    for (const { lineData, text } of furiganaLines) {
+    for (const { index, lineData, text } of furiganaLines) {
       if (isStale()) return;
       let romaji = getRomanizationFromCache(text);
       if (!romaji) {
@@ -516,8 +561,14 @@ async function processBatchTranslationsAndRomanizations(
       // no-op if the line already has furigana.
       const done = romaji ? await annotateFuriganaFromRomaji(lineData, text, romaji) : false;
       if (!done) await annotateFurigana(lineData, text);
+      // The annotation awaited a dictionary load or a request: the injection may have been replaced
+      // meanwhile, and its decorations then belong to lines that are no longer there.
+      if (isStale()) return;
+      const furigana = readFuriganaRuns(lineData);
+      if (furigana.length > 0) recordLyricDecoration(index, { furigana });
     }
     lyricsElementAdded();
+    publishPictureInPictureLyrics();
   }
 
   // AI furigana: everything above stays as the first answer; once the LLM's sung readings arrive
@@ -525,10 +576,15 @@ async function processBatchTranslationsAndRomanizations(
   const pairsByLine = await llmFuriganaRequest;
   if (pairsByLine && !isStale()) {
     let changed = 0;
-    furiganaLines.forEach(({ lineData, text }, i) => {
-      if (applyLlmFurigana(lineData, text, pairsByLine[i] ?? [])) changed++;
+    furiganaLines.forEach(({ index, lineData, text }, i) => {
+      if (!applyLlmFurigana(lineData, text, pairsByLine[i] ?? [])) return;
+      changed++;
+      recordLyricDecoration(index, { furigana: readFuriganaRuns(lineData) });
     });
-    if (changed > 0) lyricsElementAdded();
+    if (changed > 0) {
+      lyricsElementAdded();
+      publishPictureInPictureLyrics();
+    }
   }
 
   await llmTranslationTask;

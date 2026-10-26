@@ -1,12 +1,9 @@
 import { DISABLE_EFFECTS_STYLE_ID, FOOTER_CLASS } from "@constants";
 import { CUSTOM_THEME_STYLE_ID } from "@braccato/core/constants";
-import {
-  createLyricsRenderer,
-  injectRomanization,
-  injectTranslation,
-  type Lyric,
-  type LyricsRenderer,
-} from "@braccato/core";
+import { createLyricsRenderer, injectRomanization, type Lyric, type LyricsRenderer } from "@braccato/core";
+import { applyFuriganaRuns } from "@modules/lyrics/furiganaDom";
+import { attachLineInteractions } from "@modules/lyrics/lineInteractions";
+import { setTranslationMeta, setTranslationSourceVisible, upsertTranslation } from "@modules/lyrics/translationDom";
 import { onLyrics, type PictureInPictureLyricsPayload } from "./bridge";
 import { PictureInPictureController } from "./controller";
 import { PictureInPictureLyricsView } from "./lyricsView";
@@ -184,6 +181,17 @@ export function createPictureInPictureHost(
       noLyrics: lyricsPayload?.noLyrics === true,
     });
     applyDecorations();
+    const builtContainer = renderer.container;
+    if (builtContainer) {
+      // The container is new on every build, so its listeners are too (the per-document ones are
+      // installed once). Seek itself is the core's own per-line click, through this window's host.
+      attachLineInteractions(builtContainer, {
+        copiedLabel: () => environment.view.translate("lyrics_copied"),
+        get log() {
+          return environment.view.log;
+        },
+      });
+    }
     syncSourceFooter();
     // The decorations and the footer both land after the build measured itself, and both add height.
     measureLyrics();
@@ -228,6 +236,7 @@ export function createPictureInPictureHost(
     const decorations = lyricsPayload?.decorations;
     if (!renderer || !pipDocument || !decorations) return;
 
+    setTranslationSourceVisible(pipDocument, lyricsPayload?.translationSourceVisible === true);
     const lines = renderer.lines;
     for (const [index, decoration] of Object.entries(decorations)) {
       const line = lines[Number(index)];
@@ -242,7 +251,16 @@ export function createPictureInPictureHost(
         );
       }
       if (decoration.translation) {
-        injectTranslation(pipDocument, line.lyricElement, decoration.translation);
+        // Replaced, not injected: the core's injector leaves a line that already has a translation
+        // alone, and a later one (the LLM's, then its revision) has to be able to take its place.
+        upsertTranslation(pipDocument, line.lyricElement, decoration.translation);
+        if (decoration.translationStage && decoration.translationHistory) {
+          setTranslationMeta(line.lyricElement, decoration.translationStage, decoration.translationHistory);
+        }
+      }
+      const text = lyricsPayload?.lyrics?.[Number(index)]?.words;
+      if (decoration.furigana && text) {
+        applyFuriganaRuns(pipDocument, line, text, decoration.furigana);
       }
     }
   }

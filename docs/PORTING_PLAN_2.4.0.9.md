@@ -217,15 +217,23 @@ git checkout -b port/2.4.0.9 v2.4.0.9     # 이식은 새 브랜치에서
 - 추가 튜닝(사용자 요청): 진입 범위(=거터 폭, 히트존과 슬라이드가 공유하는 값)가 첫 글자 절반쯤까지 파고들어 그 지점부터 드래그 선택을 시작할 수 없어서 0.5em→0.35em(0.7배)로 축소.
 - 완료 기준: 거터에서만 시크, 나머지는 선택/복사, 더블클릭 시크, 히스테리시스, 오른쪽 정렬/RTL/간주 행/싱크 없음 행 동작.
 
-### Phase 6 — PiP 지원 (L)
+### Phase 6 — PiP 지원 (L) — 코드 완료(브라우저 실측 대기)
 
-- [ ] 스파이크 E 결과대로: 번역 교체 훅, 후리가나 데이터 전송과 PiP 측 부착, 스윕, 거터/복사 리스너 설치, `fork.css` 로드, 자동 스크롤.
-- [ ] Chromium(ISOLATED 호스트)과 Firefox(MAIN 월드 호스트) 양쪽 빌드에서 확인.
+- [x] 스파이크 E 결과대로: 번역 교체 훅, 후리가나 데이터 전송과 PiP 측 부착, 스윕, 거터/복사 리스너 설치, `fork.css` 로드, 자동 스크롤.
+- [x] Chromium(ISOLATED 호스트)과 Firefox(MAIN 월드 호스트) 양쪽 빌드에서 확인(빌드 산출물 수준: Firefox MAIN 월드 번들 `content-3.js`에 `furiganaDom` 포함, `chrome.storage`/kuromoji 미포함 확인. 실제 PiP 창 동작은 미확인).
+- 구현 메모:
+  - 후리가나: 메인이 계산한 런을 `LyricLineDecoration.furigana`(`{start,end,reading}[]`)로 기록하고(`furiganaDom.readFuriganaRuns`가 DOM의 `data-start/end/reading`에서 되읽음) 기존 번역/로마자 배치와 같은 `publishPictureInPictureLyrics()` 경로로 전송. PiP는 `applyDecorations()`에서 `applyFuriganaRuns(doc, line, text, runs)`로 부착(같으면 no-op, 다르면 교체). 스윕은 `furiganaDom`의 문서별 레지스트리라 창마다 자기 엔진의 `part.animations`를 읽는다.
+  - 번역 교체: PiP의 `injectTranslation`(이미 번역이 있으면 아무것도 안 함)을 `translationDom.upsertTranslation`(기존 요소 텍스트 교체)으로 교체. `forkTranslation.ts`도 같은 함수를 쓴다.
+  - 시크/복사: `lineInteractions.attachLineInteractions(container, host)`로 바꿔 i18n/로거를 호출자가 주입(`copiedLabel`, `log`). PiP는 컨테이너가 빌드마다 새로 생기므로 `buildLyrics()`마다 설치, 문서 단위 리스너는 문서당 1회. 토스트 문구용으로 `lyrics_copied`를 PiP 문자열 키에 추가. 시크 자체는 코어의 줄 클릭이 PiP 호스트의 `seek`로 처리.
+  - `fork.css`: PiP가 로드하는 `css/blyrics/index.css`가 `fork.css`를 import하므로 별도 작업 없음(싱크 없음 밝게, 번역 밝기, 후리가나, 거터 CSS 포함).
+  - 자동 스크롤 되감기 제거: PiP가 테마(`#blyrics-custom-style`)를 `renderer.setTheme`로 다시 읽으므로 우리가 테마 뒤에 붙인 주석이 함께 적용될 것으로 보나 실측 필요.
+  - 알려진 한계: 후리가나 더블클릭 수정은 메인 창 전용(`chrome.storage`)이며, 수정 결과는 다음 발행 때까지 PiP에 반영되지 않는다. PiP 안에서 더블클릭은 시크로 동작.
 - 완료 기준: PiP 창에서도 후리가나(위치, 스윕), LLM 번역 교체, 거터 시크와 복사, 싱크 없음 밝게가 메인 뷰와 같게 동작한다.
 
 ### Phase 7 — 마무리 (S~M)
 
-- [ ] AI 후리가나(12) 마무리, UtaTen 흔적이 없는지 확인(`npm run knip`으로 미사용 코드 점검), 문서 갱신, `README.md` 버전 표기, 셀프체크 추가(6절).
+- [x] 코드 완료(2026-10): 셀프체크 `fork.selfcheck.ts` 추가, 로거 래퍼 위반 수정, knip 미사용 export 정리, UtaTen 코드/권한 없음 확인. 브라우저 회귀 점검은 사용자 몫. 후속은 [EXCEPTIONS_TOOL_PLAN.md](EXCEPTIONS_TOOL_PLAN.md).
+- [ ] (원문) AI 후리가나(12) 마무리, UtaTen 흔적이 없는지 확인(`npm run knip`으로 미사용 코드 점검), 문서 갱신, `README.md` 버전 표기, 셀프체크 추가(6절).
 
 ## 6. 검증
 

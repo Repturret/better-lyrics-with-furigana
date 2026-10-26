@@ -58,6 +58,8 @@ interface AppStateType {
   isLlmFuriganaEnabled: boolean;
   /** Second LLM pass that rewrites the first-pass translation as spoken language. */
   isLlmRevisionEnabled: boolean;
+  /** Show the badge on each translation naming where it came from (Google / AI / AI revised). */
+  isTranslationSourceBadgeEnabled: boolean;
   isPassiveScrollEnabled: boolean;
   hasPreloadedNextSong: boolean;
   currentInjectionId: number;
@@ -112,6 +114,7 @@ export const AppState: AppStateType = {
   llmCustomPrompt: "",
   isLlmFuriganaEnabled: true,
   isLlmRevisionEnabled: true,
+  isTranslationSourceBadgeEnabled: false,
   isPassiveScrollEnabled: true,
   hasPreloadedNextSong: false,
   currentInjectionId: 0,

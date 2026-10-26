@@ -1,6 +1,6 @@
 import { LOG_PREFIX } from "@constants";
 import { logCore as log } from "@core/logger";
-import { getFuriganaOverride } from "@modules/lyrics/furiganaEditing";
+import { contextReadings, getExceptions, getReadingOverride } from "@modules/exceptions/store";
 import type { LineData } from "@braccato/core";
 import {
   attachFuriganaRuns,
@@ -41,7 +41,7 @@ const DIGIT_KANJI = ["〇", "一", "二", "三", "四", "五", "六", "七", "�
 // 愛しい stem "itoshi", その先 as せん not さき). Each entry is
 // [match, kanjiStart, kanjiEnd, reading]: `match` is searched in the line and
 // `reading` is placed over match[kanjiStart..kanjiEnd].
-export type ReadingOverride = readonly [string, number, number, string];
+type ReadingOverride = readonly [string, number, number, string];
 
 const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["一昨日", 0, 3, "おととい"],
@@ -170,6 +170,8 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["熟れ", 0, 1, "う"],
   ["惰性", 0, 2, "だせい"],
   ["後味悪", 0, 3, "あとあじわる"],
+  // 星街 (Hoshimachi, as in 星街すいせい) is ほしまち; Google hears it as ほしがい.
+  ["星街", 0, 2, "ほしまち"],
 ];
 
 type KuromojiToken = { surface_form: string; reading?: string };
@@ -515,7 +517,10 @@ function findAnchor(reading: string, kana: string, from: number): number {
  * anchors into `reading`, returns the kana reading of each kanji run with its
  * character offset. Works for a whole line or a single token.
  */
-function alignKanjiRuns(surface: string, rawReading: string): { offset: number; end: number; reading: string }[] {
+export function alignKanjiRuns(
+  surface: string,
+  rawReading: string
+): { offset: number; end: number; reading: string }[] {
   // Punctuation / spaces / latin that Google passes through the romaji would
   // otherwise land inside a run or break an anchor - keep only kana here.
   const reading = rawReading.replace(/[^぀-ゟァ-ヺーヽヾー]/g, "");
@@ -629,7 +634,7 @@ function alignKanjiRuns(surface: string, rawReading: string): { offset: number; 
   return runs;
 }
 
-function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
+export function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
   let result = runs;
   const claimed: [number, number][] = [];
   // Longest match wins: 愛してる before 愛して, 一昨日 before 昨日.
@@ -665,10 +670,40 @@ function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
 /** The user's own correction (furiganaEditing.ts) always wins - applied last, over everything
  *  above, exactly on the run it was made for. */
 function applyUserOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
-  return runs.map(run => {
-    const reading = getFuriganaOverride(fullText.slice(run.start, run.end));
+  const byRun = runs.map(run => {
+    const reading = getReadingOverride(fullText.slice(run.start, run.end));
     return reading && reading !== run.reading ? { ...run, reading } : run;
   });
+  return applyContextReadings(fullText, byRun, contextReadings(getExceptions()));
+}
+
+/**
+ * The user's rules that name a context (被告人前: 前 is まえ), laid over the runs. Unlike the static
+ * table they do not hold back when a kanji touches the match - the user wrote the context on
+ * purpose - and a longer context wins over a shorter one.
+ */
+export function applyContextReadings(
+  fullText: string,
+  runs: KanjiRun[],
+  entries: readonly { match: string; start: number; end: number; reading: string }[]
+): KanjiRun[] {
+  let result = runs;
+  const claimed: [number, number][] = [];
+  for (const entry of [...entries].sort((a, b) => b.match.length - a.match.length)) {
+    for (
+      let idx = fullText.indexOf(entry.match);
+      idx !== -1;
+      idx = fullText.indexOf(entry.match, idx + entry.match.length)
+    ) {
+      const start = idx + entry.start;
+      const end = idx + entry.end;
+      if (claimed.some(([s, e]) => start < e && end > s)) continue;
+      result = result.filter(run => run.end <= start || run.start >= end);
+      result.push({ start, end, reading: entry.reading });
+      claimed.push([start, end]);
+    }
+  }
+  return result.sort((a, b) => a.start - b.start);
 }
 
 /**

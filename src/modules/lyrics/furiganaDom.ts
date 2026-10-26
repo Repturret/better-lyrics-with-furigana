@@ -80,20 +80,17 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
     if (!startSpan) continue;
     const endSpan = spans.find(sp => run.end - 1 >= sp.start && run.end - 1 < sp.end) ?? startSpan;
 
-    let centerPx = 0;
+    const meta: RunMeta = {
+      startEl: startSpan.el,
+      startOffset: run.start - startSpan.start,
+      endEl: endSpan.el,
+      endOffset: run.end - 1 - endSpan.start,
+    };
     // Rendered width of the kanji this reading sits over, in viewport px, used by the collision
     // pass to decide which readings to condense.
-    let kanjiWidthPx = 0;
-    const first = charRect(doc, startSpan.el, run.start - startSpan.start);
-    const last = charRect(doc, endSpan.el, run.end - 1 - endSpan.start);
-    const wordRect = startSpan.el.getBoundingClientRect();
-    // getBoundingClientRect is post-scale (the line is scaled); convert the delta back into the
-    // anchor word's own unscaled pixels.
-    const scale = startSpan.el.offsetWidth > 0 ? wordRect.width / startSpan.el.offsetWidth : 1;
-    if (first && last && scale > 0) {
-      centerPx = ((first.left + last.right) / 2 - wordRect.left) / scale;
-      kanjiWidthPx = Math.max(0, last.right - first.left);
-    }
+    const measured = measureRun(doc, meta);
+    const centerPx = measured?.centerPx ?? 0;
+    const kanjiWidthPx = measured?.kanjiWidthPx ?? 0;
 
     // One segment per word the run overlaps, each with its own absolute start (song-seconds) and
     // share of the singing time, pro-rated out of that word's own duration (the reading of 旅立
@@ -127,6 +124,10 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
     // The exact kanji this reading sits over, so a manual edit (furiganaEditing.ts) knows what to
     // key its override on without having to re-derive it from layout.
     rt.dataset.surface = fullText.slice(run.start, run.end);
+    // Where the run sits in the line's text, so the runs on screen can be read back off the DOM
+    // (readFuriganaRuns) and sent on to the Picture-in-Picture window.
+    rt.dataset.start = String(run.start);
+    rt.dataset.end = String(run.end);
     rt.append(run.reading);
     const highlight = doc.createElement("span");
     highlight.className = FURIGANA_HIGHLIGHT_CLASS;
@@ -134,6 +135,7 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
     rt.append(highlight);
     rt.style.left = `${Math.max(centerPx, 0)}px`;
     startSpan.el.appendChild(rt);
+    runMetas.set(rt, meta);
     attached++;
     placed.push({ rt, span: startSpan, kanjiWidthPx });
 
@@ -147,7 +149,82 @@ export function attachFuriganaRuns(doc: Document, line: LineData, fullText: stri
   }
 
   resolveFuriganaLayout(line.lyricElement, placed);
+  ensureFuriganaReflow(doc);
   return attached;
+}
+
+// -- Reflow -----------------------------------------------------------------
+
+/** Where a reading's first and last kanji sit, kept so it can be measured again later. */
+interface RunMeta {
+  startEl: HTMLElement;
+  startOffset: number;
+  endEl: HTMLElement;
+  endOffset: number;
+}
+
+const runMetas = new WeakMap<HTMLElement, RunMeta>();
+
+/** The reading's horizontal centre (in its anchor word's own pixels) and its kanji's width, or null
+ *  when the word has no layout to measure right now (a culled line, a hidden window). */
+function measureRun(doc: Document, meta: RunMeta): { centerPx: number; kanjiWidthPx: number } | null {
+  const wordRect = meta.startEl.getBoundingClientRect();
+  if (wordRect.width === 0) return null;
+  const first = charRect(doc, meta.startEl, meta.startOffset);
+  const last = charRect(doc, meta.endEl, meta.endOffset);
+  // getBoundingClientRect is post-scale (the line is scaled); convert the delta back into the
+  // anchor word's own unscaled pixels.
+  const scale = meta.startEl.offsetWidth > 0 ? wordRect.width / meta.startEl.offsetWidth : 1;
+  if (!first || !last || scale <= 0) return null;
+  return {
+    centerPx: ((first.left + last.right) / 2 - wordRect.left) / scale,
+    kanjiWidthPx: Math.max(0, last.right - first.left),
+  };
+}
+
+/**
+ * Re-measures and re-places every reading under `root`. A reading's position is fixed pixels worked
+ * out when it was attached, but the text it sits over does not stay that wide: the Picture-in-Picture
+ * window sizes its lyrics off its own width and loads its web fonts after the lyrics are built, so
+ * every reading ended up a little left of the kanji it belongs to once the real glyphs arrived.
+ */
+function reflowFurigana(root: ParentNode, doc: Document): void {
+  for (const lineEl of root.querySelectorAll<HTMLElement>(".blyrics--line")) {
+    const placed: PlacedFurigana[] = [];
+    for (const rt of lineEl.querySelectorAll<HTMLElement>(`.${FURIGANA_CLASS}`)) {
+      const meta = runMetas.get(rt);
+      if (!meta) continue;
+      const measured = measureRun(doc, meta);
+      if (!measured) continue;
+      // Back to the unsqueezed base before measuring the overlap again, which decides squeezing anew.
+      rt.style.removeProperty("transform");
+      rt.style.left = `${Math.max(measured.centerPx, 0)}px`;
+      placed.push({ rt, span: { el: meta.startEl }, kanjiWidthPx: measured.kanjiWidthPx });
+    }
+    if (placed.length) resolveFuriganaLayout(lineEl, placed);
+  }
+}
+
+const reflowInstalled = new WeakSet<Document>();
+
+/** Once per document: re-place the readings when the window resizes or a web font finishes loading. */
+function ensureFuriganaReflow(doc: Document): void {
+  if (reflowInstalled.has(doc)) return;
+  const view = doc.defaultView;
+  if (!view) return;
+  reflowInstalled.add(doc);
+
+  let frame: number | null = null;
+  const schedule = (): void => {
+    if (frame !== null) return;
+    frame = view.requestAnimationFrame(() => {
+      frame = null;
+      reflowFurigana(doc, doc);
+    });
+  };
+  view.addEventListener("resize", schedule);
+  doc.fonts?.addEventListener("loadingdone", schedule);
+  void doc.fonts?.ready.then(schedule);
 }
 
 /** Readings currently on a line, in order. */
@@ -156,6 +233,32 @@ export function existingReadings(line: LineData): string[] {
     line.lyricElement.querySelectorAll<HTMLElement>(`.${FURIGANA_CLASS}`),
     el => el.dataset.reading ?? ""
   );
+}
+
+/** The runs a line currently shows, read back off its readings. */
+export function readFuriganaRuns(line: LineData): FuriganaRun[] {
+  return Array.from(line.lyricElement.querySelectorAll<HTMLElement>(`.${FURIGANA_CLASS}`), el => ({
+    start: Number(el.dataset.start),
+    end: Number(el.dataset.end),
+    reading: el.dataset.reading ?? "",
+  })).filter(run => Number.isFinite(run.start) && Number.isFinite(run.end) && run.end > run.start && run.reading);
+}
+
+/**
+ * Makes a line show exactly `runs`: a no-op when it already does, otherwise its readings are
+ * replaced. What the Picture-in-Picture window calls for the runs the side panel worked out - it
+ * builds its own line elements and has none of the reading pipeline, only these results.
+ */
+export function applyFuriganaRuns(doc: Document, line: LineData, fullText: string, runs: FuriganaRun[]): boolean {
+  const current = readFuriganaRuns(line);
+  if (
+    current.length === runs.length &&
+    current.every((c, i) => c.start === runs[i].start && c.end === runs[i].end && c.reading === runs[i].reading)
+  ) {
+    return false;
+  }
+  removeFurigana(line);
+  return attachFuriganaRuns(doc, line, fullText, runs) > 0;
 }
 
 export function removeFurigana(line: LineData): void {
@@ -212,6 +315,49 @@ interface SweepEntry {
   segments: SweepSegment[];
   runStartSec: number;
   totalDurSec: number;
+}
+
+/** Fading the filled reading back out takes this long, matching fork.css's opacity transition. */
+const SWEEP_RESET_FADE_MS = 450;
+
+interface SweepState {
+  /** The line was animating on the last frame, so the reading may be showing a sweep. */
+  active: boolean;
+  resetTimer: number | null;
+}
+
+const sweepStates = new WeakMap<SweepEntry, SweepState>();
+
+/**
+ * Once the line stops being the one being sung, a reading must go back to its dim resting look like
+ * the word's own highlight does (the core fades that out as the line exits), instead of staying
+ * filled in for good. The fill fades out, then its sweep position is cleared.
+ */
+function resetSweep(entry: SweepEntry, view: Window): void {
+  const state = sweepStates.get(entry);
+  if (!state) return;
+  state.active = false;
+  entry.highlight.style.opacity = "0";
+  state.resetTimer = view.setTimeout(() => {
+    entry.highlight.style.removeProperty(AMOUNT_START);
+    entry.highlight.style.removeProperty(AMOUNT_END);
+    entry.highlight.style.removeProperty("opacity");
+    state.resetTimer = null;
+  }, SWEEP_RESET_FADE_MS);
+}
+
+function activateSweep(entry: SweepEntry, view: Window): void {
+  let state = sweepStates.get(entry);
+  if (!state) {
+    state = { active: false, resetTimer: null };
+    sweepStates.set(entry, state);
+  }
+  if (state.resetTimer !== null) {
+    view.clearTimeout(state.resetTimer);
+    state.resetTimer = null;
+    entry.highlight.style.removeProperty("opacity");
+  }
+  state.active = true;
 }
 
 interface SweepRegistry {
@@ -335,7 +481,12 @@ function trackSweep(doc: Document, entry: SweepEntry): void {
         current.entries.delete(item);
         continue;
       }
-      if (item.line.isAnimating) syncSweep(item);
+      if (item.line.isAnimating) {
+        activateSweep(item, view);
+        syncSweep(item);
+      } else if (sweepStates.get(item)?.active) {
+        resetSweep(item, view);
+      }
     }
     if (current.entries.size === 0) {
       current.running = false;

@@ -4,10 +4,9 @@
  * optionally a second pass that rewrites them as spoken language. Every step is best-effort: when
  * the mode is off, there is no API key, or a request fails, what is already on screen stays.
  */
-import { TRANSLATED_LYRICS_CLASS } from "@constants";
 import { AppState } from "@core/appState";
 import { getLlmConfig, reviseTranslationWithLlm, translateLinesWithLlm } from "@modules/lyrics/llmTranslation";
-import { injectTranslation } from "@braccato/core";
+import { upsertTranslation } from "@modules/lyrics/translationDom";
 
 export interface LlmTranslationLine {
   index: number;
@@ -24,20 +23,14 @@ interface LlmTranslationPass {
   sourceLanguage: string | undefined;
   isStale: () => boolean;
   isSameText: (a: string, b: string) => boolean;
+  /** The song's own lines that are not being translated (already in the target language, e.g. a
+   *  Korean song's Korean lines for a Korean reader). Still the song's voice: handed to the model
+   *  so its translation of an odd English line sounds like the same singer. */
+  contextLines?: string[];
   /** Called with every line whose text changed, so other views can mirror it. */
-  onTranslation: (index: number, text: string) => void;
+  onTranslation: (index: number, text: string, stage: "llm" | "revised") => void;
   onApplied: () => void;
   signal?: AbortSignal;
-}
-
-/** Replace the translation row's text in place, or add it if not present yet. */
-function upsertTranslation(doc: Document, lyricElement: HTMLElement, text: string): void {
-  const existing = lyricElement.querySelector<HTMLElement>(`.${TRANSLATED_LYRICS_CLASS}`);
-  if (existing) {
-    if (existing.textContent !== text) existing.textContent = text;
-    return;
-  }
-  injectTranslation(doc, lyricElement, text);
 }
 
 /**
@@ -46,7 +39,7 @@ function upsertTranslation(doc: Document, lyricElement: HTMLElement, text: strin
  * or quotation marks. Judged by script, since the target language's own script is not known here -
  * mostly kana/Han coming back out for a Japanese line headed to a non-CJK language is untranslated.
  */
-function looksUntranslated(source: string, translated: string, targetLanguage: string): boolean {
+export function looksUntranslated(source: string, translated: string, targetLanguage: string): boolean {
   const cjkChar = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
   const cjkChars = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/gu;
   if (!cjkChar.test(source) || /^(ja|zh)/i.test(targetLanguage)) return false;
@@ -62,13 +55,20 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   const cfg = await getLlmConfig();
   if (!cfg || isStale()) return;
 
-  const apply = (line: LlmTranslationLine, text: string): void => {
+  const apply = (line: LlmTranslationLine, text: string, stage: "llm" | "revised"): void => {
     upsertTranslation(pass.doc, pass.lyricElementAt(line.index), text);
-    pass.onTranslation(line.index, text);
+    pass.onTranslation(line.index, text, stage);
   };
 
   const texts = lines.map(l => l.text);
-  const improved = await translateLinesWithLlm(texts, targetLanguage, pass.sourceLanguage, cfg, signal);
+  const improved = await translateLinesWithLlm(
+    texts,
+    targetLanguage,
+    pass.sourceLanguage,
+    cfg,
+    signal,
+    pass.contextLines
+  );
   if (isStale()) return;
 
   let applied = 0;
@@ -76,7 +76,7 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
     const line = lines[i];
     if (!translated || line.official || isSameText(translated, line.text)) return;
     if (looksUntranslated(line.text, translated, targetLanguage)) return;
-    apply(line, translated);
+    apply(line, translated, "llm");
     applied++;
   });
   if (applied > 0) pass.onApplied();
@@ -85,16 +85,21 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   if (!AppState.isLlmRevisionEnabled) return;
   const drafts = improved.map((translated, i) => {
     const line = lines[i];
-    return translated && !line.official && !isSameText(translated, line.text) ? translated : null;
+    return translated &&
+      !line.official &&
+      !isSameText(translated, line.text) &&
+      !looksUntranslated(line.text, translated, targetLanguage)
+      ? translated
+      : null;
   });
-  const revised = await reviseTranslationWithLlm(texts, drafts, targetLanguage, cfg, signal);
+  const revised = await reviseTranslationWithLlm(texts, drafts, targetLanguage, cfg, signal, pass.contextLines);
   if (isStale()) return;
 
   let revisedCount = 0;
   revised.forEach((text, i) => {
     if (!text || !drafts[i] || text === drafts[i] || isSameText(text, lines[i].text)) return;
     if (looksUntranslated(lines[i].text, text, targetLanguage)) return;
-    apply(lines[i], text);
+    apply(lines[i], text, "revised");
     revisedCount++;
   });
   if (revisedCount > 0) pass.onApplied();

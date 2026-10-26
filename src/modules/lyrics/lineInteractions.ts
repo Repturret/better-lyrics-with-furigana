@@ -24,9 +24,18 @@ import {
   WORD_CLASS,
   WORD_HIGHLIGHT_CLASS,
 } from "@constants";
-import { t } from "@core/i18n";
-import { logCore as log } from "@core/logger";
 import { FURIGANA_CLASS } from "@modules/lyrics/furiganaDom";
+
+/**
+ * What this module needs from the world it runs in. The side panel passes its extension i18n and
+ * logger; the Picture-in-Picture window, which on Gecko is the page world with no `chrome.*`, passes
+ * what its own host environment provides. Nothing here reaches for either directly.
+ */
+interface LineInteractionHost {
+  /** The "Copied" toast text. */
+  copiedLabel: () => string;
+  log: (...args: unknown[]) => void;
+}
 
 const BLOCK_SELECTOR = `.${LINE_CLASS}`;
 /** Reading aids: shown on screen, but never copied. The highlight overlay duplicates the main
@@ -155,7 +164,7 @@ function withinZone(edges: TextEdges, clientX: number, widen: boolean): boolean 
  * A fresh (narrow, non-widened) gutter test against a line's current, live position. Only valid to
  * call on a line that is not already the hovered target - see the module doc comment above.
  */
-export function isInSeekGutter(lineElement: HTMLElement, clientX: number): boolean {
+function isInSeekGutter(lineElement: HTMLElement, clientX: number): boolean {
   if (lineElement.dataset.instrumental === "true") {
     // No text to reserve a gutter against - the whole line is a seek target.
     return true;
@@ -190,7 +199,7 @@ function placeGutterBar(lineElement: HTMLElement, edges: TextEdges): void {
  * True when the user currently has a non-empty selection, which means a click event is the tail
  * end of a drag and must not seek.
  */
-export function hasActiveTextSelection(doc: Document): boolean {
+function hasActiveTextSelection(doc: Document): boolean {
   const selection = doc.defaultView?.getSelection();
   return !!selection && !selection.isCollapsed && selection.toString().trim().length > 0;
 }
@@ -242,7 +251,7 @@ function getSelectedLyricsText(container: HTMLElement): string {
     .join("\n");
 }
 
-function copyWithExecCommand(doc: Document, text: string): boolean {
+function copyWithExecCommand(doc: Document, text: string, host: LineInteractionHost): boolean {
   const textarea = doc.createElement("textarea");
   textarea.value = text;
   textarea.setAttribute("readonly", "");
@@ -256,7 +265,7 @@ function copyWithExecCommand(doc: Document, text: string): boolean {
     textarea.select();
     copied = doc.execCommand("copy");
   } catch (error) {
-    log(LOG_PREFIX, "Clipboard fallback failed", error);
+    host.log(LOG_PREFIX, "Clipboard fallback failed", error);
   }
 
   textarea.remove();
@@ -268,12 +277,12 @@ function clearSelection(doc: Document): void {
   doc.defaultView?.getSelection()?.removeAllRanges();
 }
 
-function showCopiedToast(doc: Document, clientX: number, clientY: number): void {
+function showCopiedToast(doc: Document, clientX: number, clientY: number, host: LineInteractionHost): void {
   doc.querySelectorAll(`.${COPIED_TOAST_CLASS}`).forEach(toast => toast.remove());
 
   const toast = doc.createElement("div");
   toast.className = COPIED_TOAST_CLASS;
-  toast.textContent = t("lyrics_copied");
+  toast.textContent = host.copiedLabel();
   toast.style.left = `${clientX}px`;
   toast.style.top = `${Math.max(clientY - 12, 24)}px`;
   doc.body.appendChild(toast);
@@ -287,14 +296,14 @@ function showCopiedToast(doc: Document, clientX: number, clientY: number): void 
   }, TOAST_DURATION_MS);
 }
 
-function handleSelectionEnd(container: HTMLElement, clientX: number, clientY: number): void {
+function handleSelectionEnd(container: HTMLElement, clientX: number, clientY: number, host: LineInteractionHost): void {
   const doc = container.ownerDocument;
   const text = getSelectedLyricsText(container);
   if (!text) return;
 
   const onSuccess = (): void => {
-    log(LOG_PREFIX, `Copied ${text.split("\n").length} line(s) of lyrics`);
-    showCopiedToast(doc, clientX, clientY);
+    host.log(LOG_PREFIX, `Copied ${text.split("\n").length} line(s) of lyrics`);
+    showCopiedToast(doc, clientX, clientY, host);
   };
 
   if (doc.defaultView?.navigator.clipboard?.writeText) {
@@ -302,13 +311,13 @@ function handleSelectionEnd(container: HTMLElement, clientX: number, clientY: nu
     // clipboard promise.
     clearSelection(doc);
     doc.defaultView.navigator.clipboard.writeText(text).then(onSuccess, error => {
-      log(LOG_PREFIX, "Clipboard write failed, falling back", error);
-      if (copyWithExecCommand(doc, text)) onSuccess();
+      host.log(LOG_PREFIX, "Clipboard write failed, falling back", error);
+      if (copyWithExecCommand(doc, text, host)) onSuccess();
     });
     return;
   }
 
-  if (copyWithExecCommand(doc, text)) onSuccess();
+  if (copyWithExecCommand(doc, text, host)) onSuccess();
 }
 
 const documentsWithSelectionListeners = new WeakSet<Document>();
@@ -318,7 +327,7 @@ const dragOriginContainers = new WeakMap<Document, HTMLElement | null>();
  * Copy-on-select is bound to the document (once per document) so a drag which ends outside the
  * lyrics container is still copied. The container is remembered from the mousedown that started it.
  */
-function ensureDocumentSelectionListeners(doc: Document): void {
+function ensureDocumentSelectionListeners(doc: Document, host: LineInteractionHost): void {
   if (documentsWithSelectionListeners.has(doc)) return;
   documentsWithSelectionListeners.add(doc);
 
@@ -340,7 +349,7 @@ function ensureDocumentSelectionListeners(doc: Document): void {
       dragOriginContainers.set(doc, null);
       // A double/triple click seeks and clears its own selection - don't treat that as a copy.
       if (event.detail >= 2) return;
-      if (container?.isConnected) handleSelectionEnd(container, event.clientX, event.clientY);
+      if (container?.isConnected) handleSelectionEnd(container, event.clientX, event.clientY, host);
     },
     true
   );
@@ -363,9 +372,9 @@ function bypassesGutter(container: HTMLElement, event: MouseEvent): boolean {
  * - hovering the gutter marks the line as a seek target and positions its bar
  * - releasing a drag selection copies the selected lyrics to the clipboard
  */
-export function attachLineInteractions(container: HTMLElement): void {
+export function attachLineInteractions(container: HTMLElement, host: LineInteractionHost): void {
   const doc = container.ownerDocument;
-  ensureDocumentSelectionListeners(doc);
+  ensureDocumentSelectionListeners(doc, host);
 
   let hoveredLine: HTMLElement | null = null;
   // The one DOM measurement taken for `hoveredLine`, back when it was still at rest - see the big
