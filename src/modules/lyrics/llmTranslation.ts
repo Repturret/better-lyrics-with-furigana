@@ -98,6 +98,9 @@ const FIDELITY_RULE =
   "(連鎖 is 연쇄 in Korean, never something like 연사). When the source word is Sino-vocabulary (a kanji " +
   "compound) that the target language also uses as an ordinary word, carry it over as that same word, in the " +
   "target language's own pronunciation, instead of paraphrasing it or guessing a different word. " +
+  "When the target language is Korean, never use the polite 요-style or formal -ㅂ니다 style (no 인가요?, " +
+  "해요, 했어요, 합니다, 입니까?): write in plain, unceremonious lyric speech (반말 or the plain -다 style, " +
+  "such as 인가?, 해, 했어, 한다) even where the source line is polite. " +
   "Only the tone is yours to adapt: make it sound " +
   "like song lyrics, with natural spoken, lyrical phrasing, without changing what is being said. ";
 
