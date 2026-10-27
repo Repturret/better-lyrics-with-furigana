@@ -93,7 +93,12 @@ const FIDELITY_RULE =
   "sense (for example 界隈 is the circle, scene or crowd of people around something, as in 最低界隈) rather " +
   "than guessing something else. Write the translation in the target language's own script and vocabulary: " +
   "never leave source-language kanji, Hanja or kana in it (圏外 becomes 권외 in Korean, not 圏外), except for " +
-  "names and titles that are conventionally left as they are. Only the tone is yours to adapt: make it sound " +
+  "names and titles that are conventionally left as they are. Only use words that really exist in the target " +
+  "language: never coin a word, and never blend or mangle characters into one that is not an established word " +
+  "(連鎖 is 연쇄 in Korean, never something like 연사). When the source word is Sino-vocabulary (a kanji " +
+  "compound) that the target language also uses as an ordinary word, carry it over as that same word, in the " +
+  "target language's own pronunciation, instead of paraphrasing it or guessing a different word. " +
+  "Only the tone is yours to adapt: make it sound " +
   "like song lyrics, with natural spoken, lyrical phrasing, without changing what is being said. ";
 
 const CONTEXT_RULE =
@@ -118,7 +123,7 @@ function buildPrompt(
   const from = sourceLanguage ? ` from ${sourceLanguage}` : "";
   const system =
     `You translate song lyrics${from} into the target language BCP-47 code "${targetLanguage}". ` +
-    "Translate for meaning and singability, preserving the emotional register and imagery; " +
+    "Translate for meaning, preserving the emotional register and imagery; " +
     "do not translate idioms word-for-word. Keep proper nouns, names and interjections. " +
     "If a line is already in the target language, or is only punctuation/symbols, return it unchanged. " +
     "Text inside quotation marks or brackets (「」, 『』, “”) is still lyric text and must be translated. " +
