@@ -172,6 +172,13 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["後味悪", 0, 3, "あとあじわる"],
   // 星街 (Hoshimachi, as in 星街すいせい) is ほしまち; Google hears it as ほしがい.
   ["星街", 0, 2, "ほしまち"],
+  // 色 on its own is いろ in lyrics, not the on reading しょく Google/kuromoji pick for 朝焼け色.
+  // A compound (景色, 色彩, 色々) has a kanji touching it and keeps its dictionary reading.
+  ["色", 0, 1, "いろ"],
+  // 背負う is せおう; the analyzers read it しょ.
+  ["背負", 0, 2, "せお"],
+  // 僕等 is ぼくら; the reading came back with a stray い from the next word (ぼくらい).
+  ["僕等", 0, 2, "ぼくら"],
 ];
 
 type KuromojiToken = { surface_form: string; reading?: string };

@@ -39,6 +39,10 @@ assert.equal(readingAt(choonpu, 2), "うっとう", "ー does not eat the first 
 const override = (text: string) => applyOverrides(text, []).map(run => `${run.start}:${run.reading}`);
 assert.deepEqual(override("君"), ["0:きみ"], "bare 君 is きみ");
 assert.deepEqual(override("星街"), ["0:ほしまち"], "星街 is ほしまち");
+assert.deepEqual(override("朝焼け色に"), ["3:いろ"], "standalone 色 is いろ");
+assert.deepEqual(override("景色"), [], "色 inside a compound keeps its dictionary reading");
+assert.deepEqual(override("背負って"), ["0:せお"], "背負う is せお");
+assert.deepEqual(override("僕等 一心に"), ["0:ぼくら"], "僕等 is ぼくら");
 assert.deepEqual(override("被告人前"), ["0:ひこくじん", "3:まえ"], "被告人前 splits around the touching kanji");
 
 // A user rule with a context re-reads only its target and leaves neighbouring runs alone.
