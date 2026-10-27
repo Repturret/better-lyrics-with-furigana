@@ -43,6 +43,10 @@ assert.deepEqual(override("朝焼け色に"), ["3:いろ"], "standalone 色 is �
 assert.deepEqual(override("景色"), [], "色 inside a compound keeps its dictionary reading");
 assert.deepEqual(override("背負って"), ["0:せお"], "背負う is せお");
 assert.deepEqual(override("僕等 一心に"), ["0:ぼくら"], "僕等 is ぼくら");
+assert.deepEqual(override("間に合う"), ["0:ま"], "間に合う is ま");
+assert.deepEqual(override("来た間に合う"), ["2:ま"], "間に合う beats the た間 あいだ rule");
+assert.deepEqual(override("寝ている間"), [], "plain 間 is left to the analyzer");
+assert.deepEqual(override("その間に"), ["2:あいだ"], "の間 is still あいだ");
 assert.deepEqual(override("被告人前"), ["0:ひこくじん", "3:まえ"], "被告人前 splits around the touching kanji");
 
 // A user rule with a context re-reads only its target and leaves neighbouring runs alone.

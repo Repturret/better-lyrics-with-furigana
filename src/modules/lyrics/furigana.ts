@@ -67,6 +67,9 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["た間", 1, 2, "あいだ"],
   ["だ間", 1, 2, "あいだ"],
   ["の間", 1, 2, "あいだ"],
+  // 間に合う is a fixed expression with ま, even right after た / の (longest match wins over the
+  // あいだ rules above).
+  ["間に合", 0, 1, "ま"],
   ["獣", 0, 1, "けもの"],
   // Standalone 側 / 他 take the kun reading, not the on reading of a compound.
   ["その他", 2, 3, "た"],
