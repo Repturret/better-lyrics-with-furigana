@@ -683,12 +683,30 @@ export function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
 
 /** The user's own correction (furiganaEditing.ts) always wins - applied last, over everything
  *  above, exactly on the run it was made for. */
-function applyUserOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
+export function applyUserOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
   const byRun = runs.map(run => {
     const reading = getReadingOverride(fullText.slice(run.start, run.end));
     return reading && reading !== run.reading ? { ...run, reading } : run;
   });
-  return applyContextReadings(fullText, byRun, contextReadings(getExceptions()));
+  // A whole-run reading for a multi-kanji word (上々) misses when the analyzers split it across runs
+  // (上 + 々), so it is applied over the text as well, wherever no other kanji touches it.
+  let spanned = byRun;
+  for (const entry of getExceptions().reading) {
+    if (!entry.enabled || entry.songId !== undefined || entry.start !== 0 || entry.end !== entry.match.length) continue;
+    if (entry.match.length < 2) continue;
+    for (let idx = fullText.indexOf(entry.match); idx !== -1; idx = fullText.indexOf(entry.match, idx + 1)) {
+      const end = idx + entry.match.length;
+      const before = fullText[idx - 1];
+      const after = fullText[end];
+      if ((before && isKanjiish(before)) || (after && isKanjiish(after))) continue;
+      if (spanned.some(run => run.start === idx && run.end === end && run.reading === entry.reading)) continue;
+      spanned = [
+        ...spanned.filter(run => run.end <= idx || run.start >= end),
+        { start: idx, end, reading: entry.reading },
+      ].sort((a, b) => a.start - b.start);
+    }
+  }
+  return applyContextReadings(fullText, spanned, contextReadings(getExceptions()));
 }
 
 /**

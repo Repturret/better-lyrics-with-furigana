@@ -15,8 +15,16 @@ for (const name of [
 }
 
 const { looksUntranslated } = await import("./forkTranslation");
-const { alignKanjiRuns, applyContextReadings, applyOverrides, hasKana, runsFromLlmPairs, shouldFurigana } =
-  await import("./furigana");
+const {
+  alignKanjiRuns,
+  applyContextReadings,
+  applyOverrides,
+  applyUserOverrides,
+  hasKana,
+  runsFromLlmPairs,
+  shouldFurigana,
+} = await import("./furigana");
+const { updateExceptions, withReading } = await import("@modules/exceptions/store");
 const { parseIndexedLines } = await import("./llmTranslation");
 
 const readingAt = (runs: { offset: number; end: number; reading: string }[], offset: number) =>
@@ -79,6 +87,21 @@ assert.deepEqual(
   llmRuns.map(run => `${run.start}:${run.reading}`),
   ["0:わたし", "2:わたし", "4:お", "6:ぬ", "8:さ", "13:え"],
   "kana inside an LLM pair does not drop its kanji"
+);
+
+// A saved reading for a multi-kanji word still applies when the analyzers split it across runs.
+void updateExceptions(store => withReading(store, "上々", "じょうじょう"));
+assert.deepEqual(
+  applyUserOverrides("I feel 上々", [{ start: 7, end: 8, reading: "うえ" }]).map(
+    run => `${run.start}-${run.end}:${run.reading}`
+  ),
+  ["7-9:じょうじょう"],
+  "上々 saved as one reading replaces the split 上 run"
+);
+assert.deepEqual(
+  applyUserOverrides("至上々", [{ start: 1, end: 2, reading: "じょう" }]).map(run => `${run.start}:${run.reading}`),
+  ["1:じょう"],
+  "a saved word is not applied inside a bigger compound"
 );
 
 // Untranslated echo guard.
