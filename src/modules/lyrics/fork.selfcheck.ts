@@ -15,7 +15,8 @@ for (const name of [
 }
 
 const { looksUntranslated } = await import("./forkTranslation");
-const { alignKanjiRuns, applyContextReadings, applyOverrides, hasKana, shouldFurigana } = await import("./furigana");
+const { alignKanjiRuns, applyContextReadings, applyOverrides, hasKana, runsFromLlmPairs, shouldFurigana } =
+  await import("./furigana");
 const { parseIndexedLines } = await import("./llmTranslation");
 
 const readingAt = (runs: { offset: number; end: number; reading: string }[], offset: number) =>
@@ -62,6 +63,19 @@ assert.deepEqual(
   contextRuns.map(run => `${run.start}:${run.reading}`),
   ["0:ひこくじん", "3:まえ"],
   "context rule changes only its target"
+);
+
+// LLM pairs that carry kana inside them still give every kanji its reading.
+const llmRuns = runsFromLlmPairs("私が私を追い抜き去っていく絵", [
+  { text: "私", reading: "わたし" },
+  { text: "私", reading: "わたし" },
+  { text: "追い抜き去って", reading: "おいぬきさって" },
+  { text: "絵", reading: "え" },
+]);
+assert.deepEqual(
+  llmRuns.map(run => `${run.start}:${run.reading}`),
+  ["0:わたし", "2:わたし", "4:お", "6:ぬ", "8:さ", "13:え"],
+  "kana inside an LLM pair does not drop its kanji"
 );
 
 // Untranslated echo guard.

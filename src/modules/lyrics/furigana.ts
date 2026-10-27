@@ -8,6 +8,7 @@ import {
   FURIGANA_CLASS,
   type FuriganaRun,
   markFuriganaSwapped,
+  readFuriganaRuns,
   removeFurigana,
 } from "@modules/lyrics/furiganaDom";
 import Kuroshiro from "kuroshiro";
@@ -925,12 +926,27 @@ const KANA_ONLY_RE = /^[\u3040-\u309f\u30a0-\u30ffー]+$/;
  * in `fullText`. Pairs are matched in order; anything that doesn't line up with
  * the text, or isn't a pure kana reading, is dropped rather than guessed.
  */
-function runsFromLlmPairs(fullText: string, pairs: { text: string; reading: string }[]): KanjiRun[] {
+export function runsFromLlmPairs(fullText: string, pairs: { text: string; reading: string }[]): KanjiRun[] {
   const runs: KanjiRun[] = [];
   let cursor = 0;
   for (const pair of pairs) {
     let surface = pair.text;
     let reading = pair.reading.replace(/\s+/g, "");
+    // A pair that spans kana inside it (抜き去って) cannot be one reading over one run; align it
+    // against its own reading instead of dropping every kanji in it.
+    if (
+      [...surface.replace(/^\P{sc=Han}+|\P{sc=Han}+$/gu, "")].some(ch => !isKanjiish(ch)) &&
+      KANA_ONLY_RE.test(reading)
+    ) {
+      const at = fullText.indexOf(surface, cursor);
+      if (at !== -1) {
+        for (const run of alignKanjiRuns(katakanaToHiragana(surface), katakanaToHiragana(reading))) {
+          runs.push({ start: at + run.offset, end: at + run.end, reading: run.reading });
+        }
+        cursor = at + surface.length;
+      }
+      continue;
+    }
     // Models sometimes leave okurigana on the surface: peel it off, and the same
     // kana off the end of the reading, so only the kanji carry a reading.
     while (surface && !isKanjiish(surface[surface.length - 1])) {
@@ -960,8 +976,14 @@ export function applyLlmFurigana(
   fullText: string,
   pairs: { text: string; reading: string }[]
 ): boolean {
-  const runs = applyUserOverrides(fullText, runsFromLlmPairs(fullText, pairs));
-  if (!runs.length) return false;
+  const llmRuns = runsFromLlmPairs(fullText, pairs);
+  // A kanji the LLM's answer does not cover keeps the reading it already has, rather than losing it.
+  const kept = readFuriganaRuns(line).filter(run => !llmRuns.some(l => run.start < l.end && run.end > l.start));
+  const runs = applyUserOverrides(
+    fullText,
+    [...llmRuns, ...kept].sort((a, b) => a.start - b.start)
+  );
+  if (!llmRuns.length) return false;
 
   const existing = existingReadings(line);
   if (existing.length === runs.length && existing.every((reading, i) => reading === runs[i].reading)) {
