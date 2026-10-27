@@ -47,6 +47,9 @@ assert.deepEqual(override("僕等 一心に"), ["0:ぼくら"], "僕等 is ぼ�
 assert.deepEqual(override("間に合う"), ["0:ま"], "間に合う is ま");
 assert.deepEqual(override("来た間に合う"), ["2:ま"], "間に合う beats the た間 あいだ rule");
 assert.deepEqual(override("寝ている間"), [], "plain 間 is left to the analyzer");
+assert.deepEqual(override("その間に"), ["2:あいだ"], "間に is あいだ");
+assert.deepEqual(override("間に挟まれ"), ["0:あいだ"], "間に is あいだ at the start of a line too");
+assert.deepEqual(override("昼間に"), [], "間 inside a compound is left alone");
 assert.deepEqual(override("その間に"), ["2:あいだ"], "の間 is still あいだ");
 assert.deepEqual(override("被告人前"), ["0:ひこくじん", "3:まえ"], "被告人前 splits around the touching kanji");
 

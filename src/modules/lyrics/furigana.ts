@@ -71,6 +71,9 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   // 間に合う is a fixed expression with ま, even right after た / の (longest match wins over the
   // あいだ rules above).
   ["間に合", 0, 1, "ま"],
+  // Any other 間に is あいだ, so one song never reads the same 間に two ways. A compound (昼間に) has a
+  // kanji touching it and is left to the analyzer.
+  ["間に", 0, 1, "あいだ"],
   ["獣", 0, 1, "けもの"],
   // Standalone 側 / 他 take the kun reading, not the on reading of a compound.
   ["その他", 2, 3, "た"],
