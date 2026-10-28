@@ -104,6 +104,19 @@ const FIDELITY_RULE =
   "Only the tone is yours to adapt: make it sound " +
   "like song lyrics, with natural spoken, lyrical phrasing, without changing what is being said. ";
 
+/**
+ * The rule models break most: a translation that still carries source-language words. Stated up front
+ * and in capitals in both passes, rather than as one clause buried in the fidelity rule.
+ */
+const NO_SOURCE_LANGUAGE_RULE =
+  "MOST IMPORTANT RULE: THE OUTPUT MUST CONTAIN NO SOURCE-LANGUAGE TEXT. Every word of every output line must be " +
+  "in the target language, written in the target language's own script. NEVER leave any word, kanji, Hanja, " +
+  "kana, romaji or phrase of the source language in a translation, not even one word, not even a name or a " +
+  "loanword written in the source script - translate it, or write it in the target language's own spelling " +
+  "(圏外 becomes 권외 in Korean; カタカナ words become the target language's spelling of that word). A line " +
+  "that still contains source-language text is WRONG and will be thrown away. Never output placeholder tokens " +
+  "such as DONT_USE, N/A or UNKNOWN either; every line gets a real translation. ";
+
 const CONTEXT_RULE =
   'The input may also carry a "context" array: other lines of the same song in its main language, given ' +
   "only so you can hear that voice. Never translate them and never return them. ";
@@ -126,6 +139,7 @@ function buildPrompt(
   const from = sourceLanguage ? ` from ${sourceLanguage}` : "";
   const system =
     `You translate song lyrics${from} into the target language BCP-47 code "${targetLanguage}". ` +
+    NO_SOURCE_LANGUAGE_RULE +
     "Translate for meaning, preserving the emotional register and imagery; " +
     "do not translate idioms word-for-word. Keep proper nouns, names and interjections. " +
     "If a line is already in the target language, or is only punctuation/symbols, return it unchanged. " +
@@ -502,7 +516,10 @@ function buildRevisionPrompt(
   const ctx = trimContext(context);
   const system =
     `You are the final editor of translated song lyrics. Each input item has the original line ("source") and a ` +
-    `draft translation ("draft") in the language with BCP-47 code "${targetLanguage}". The draft is already a ` +
+    `draft translation ("draft") in the language with BCP-47 code "${targetLanguage}". ` +
+    NO_SOURCE_LANGUAGE_RULE +
+    "A draft that still contains source-language text must be fixed first of all: translate every such word. " +
+    "Apart from that, the draft is already a " +
     "faithful translation: your job is only to repair it, not to rewrite it. Compare each draft with its source " +
     "and change it ONLY when it has one of these problems: (1) source-language characters, a placeholder token " +
     "(such as DONT_USE) or a non-word left in the text; (2) a word that does not really exist in the target " +
