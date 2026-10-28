@@ -14,7 +14,7 @@ for (const name of [
   Object.assign(globalThis, { [name]: stub });
 }
 
-const { looksUntranslated } = await import("./forkTranslation");
+const { driftedFromDraft, hasTranslationDefect, looksUntranslated } = await import("./forkTranslation");
 const {
   alignKanjiRuns,
   applyContextReadings,
@@ -109,6 +109,14 @@ assert.ok(looksUntranslated("圏外", "圏外", "ko"), "an echoed CJK line is un
 assert.ok(!looksUntranslated("圏外", "권외", "ko"), "a Korean result is fine");
 assert.ok(!looksUntranslated("圏外", "圏外", "ja"), "CJK targets are exempt");
 assert.ok(!looksUntranslated("hello", "hello", "ko"), "non-CJK source is exempt");
+
+// Defects that keep a model answer off the screen.
+assert.ok(hasTranslationDefect("連鎖", "DONT_USE", "ko"), "a placeholder token is a defect");
+assert.ok(hasTranslationDefect("君が好き", "너를 すき", "ko"), "leftover kana is a defect");
+assert.ok(!hasTranslationDefect("君が好き", "네가 좋아", "ko"), "a clean translation passes");
+assert.ok(!hasTranslationDefect("君が好き", "你好", "zh"), "CJK targets are exempt from the kana check");
+assert.ok(driftedFromDraft("끝없이 이어지는 연쇄 속에서", "연쇄"), "a rewrite that drops most of the line has drifted");
+assert.ok(!driftedFromDraft("끝없이 이어지는 연쇄 속에서", "끝없이 이어지는 연쇄 속에서도"), "a small edit has not");
 
 // LLM answers are read per id, so a dropped line costs only that line.
 assert.deepEqual(

@@ -48,6 +48,32 @@ export function looksUntranslated(source: string, translated: string, targetLang
   return letters > 0 && cjk / letters > 0.5;
 }
 
+/**
+ * A model answer that must not reach the screen: the source line echoed back, source-language kana or
+ * Han left inside a translation headed for a non-CJK-script language, or a stray placeholder token
+ * (DONT_USE, NO_TRANSLATION) where text should be. Names the model chose to leave as they are fall to
+ * this too: a line that is retried or kept as Google's is better than one with half its words missing.
+ */
+export function hasTranslationDefect(source: string, translated: string, targetLanguage: string): boolean {
+  if (looksUntranslated(source, translated, targetLanguage)) return true;
+  if (/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/.test(translated)) return true;
+  if (/^(ja|zh)/i.test(targetLanguage)) return false;
+  return (
+    /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(translated) &&
+    /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(source)
+  );
+}
+
+/** A rewrite that is far shorter or longer than its draft has lost or invented meaning. */
+export function driftedFromDraft(draft: string, revised: string): boolean {
+  const size = (text: string): number => text.replace(/[^\p{L}\p{N}]/gu, "").length;
+  const before = size(draft);
+  const after = size(revised);
+  if (before === 0) return false;
+  const ratio = after / before;
+  return ratio < 0.6 || ratio > 1.6;
+}
+
 export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<void> {
   const { lines, targetLanguage, isStale, isSameText, signal } = pass;
   if (lines.length === 0 || isStale()) return;
@@ -71,11 +97,34 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   );
   if (isStale()) return;
 
+  // A line that came back echoed, half in the source script, or carrying a placeholder is asked for
+  // once more on its own, with the problem named; if it is still bad it keeps the Google line.
+  const defective = improved.flatMap((translated, i) =>
+    translated && !lines[i].official && hasTranslationDefect(lines[i].text, translated, targetLanguage) ? [i] : []
+  );
+  if (defective.length > 0) {
+    const retried = await translateLinesWithLlm(
+      defective.map(i => texts[i]),
+      targetLanguage,
+      pass.sourceLanguage,
+      cfg,
+      signal,
+      pass.contextLines,
+      "Your previous answer for these lines was rejected: it left source-language characters or a placeholder " +
+        "token (such as DONT_USE) in the text. Translate every line completely into the target language, with " +
+        "natural words of that language only, and never output placeholder tokens."
+    );
+    if (isStale()) return;
+    defective.forEach((lineIndex, k) => {
+      improved[lineIndex] = retried[k] ?? null;
+    });
+  }
+
   let applied = 0;
   improved.forEach((translated, i) => {
     const line = lines[i];
     if (!translated || line.official || isSameText(translated, line.text)) return;
-    if (looksUntranslated(line.text, translated, targetLanguage)) return;
+    if (hasTranslationDefect(line.text, translated, targetLanguage)) return;
     apply(line, translated, "llm");
     applied++;
   });
@@ -88,7 +137,7 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
     return translated &&
       !line.official &&
       !isSameText(translated, line.text) &&
-      !looksUntranslated(line.text, translated, targetLanguage)
+      !hasTranslationDefect(line.text, translated, targetLanguage)
       ? translated
       : null;
   });
@@ -98,7 +147,9 @@ export async function runLlmTranslationPass(pass: LlmTranslationPass): Promise<v
   let revisedCount = 0;
   revised.forEach((text, i) => {
     if (!text || !drafts[i] || text === drafts[i] || isSameText(text, lines[i].text)) return;
-    if (looksUntranslated(lines[i].text, text, targetLanguage)) return;
+    if (hasTranslationDefect(lines[i].text, text, targetLanguage)) return;
+    // A rewrite that lost or gained a lot of text changed what the line says: keep the first answer.
+    if (driftedFromDraft(drafts[i], text)) return;
     apply(lines[i], text, "revised");
     revisedCount++;
   });

@@ -316,12 +316,13 @@ export async function translateLinesWithLlm(
   sourceLanguage: string | null | undefined,
   cfg: LlmConfig,
   signal?: AbortSignal,
-  context: string[] = []
+  context: string[] = [],
+  note = ""
 ): Promise<(string | null)[]> {
   const nulls = (): (string | null)[] => lines.map(() => null);
   if (lines.length === 0) return [];
 
-  const customPrompt = AppState.llmCustomPrompt;
+  const customPrompt = [AppState.llmCustomPrompt, note].filter(part => part?.trim()).join("\n");
   const cacheKey = hashKey(
     `${cfg.provider} ${cfg.model} ${targetLanguage} ${customPrompt}\n${trimContext(context).join("\n")}\n--\n${lines.join("\n")}`
   );
@@ -501,14 +502,19 @@ function buildRevisionPrompt(
   const ctx = trimContext(context);
   const system =
     `You are the final editor of translated song lyrics. Each input item has the original line ("source") and a ` +
-    `draft translation ("draft") in the language with BCP-47 code "${targetLanguage}". Rewrite every draft so it ` +
-    "reads as natural, colloquial spoken language - the way a person would say or sing it - while keeping its " +
-    "meaning, imagery, emotional tone and roughly its length. Song lyrics are spoken-style: turn stiff written or " +
-    "literary wording into spoken wording, unless the original line itself is genuinely literary or archaic. " +
+    `draft translation ("draft") in the language with BCP-47 code "${targetLanguage}". The draft is already a ` +
+    "faithful translation: your job is only to repair it, not to rewrite it. Compare each draft with its source " +
+    "and change it ONLY when it has one of these problems: (1) source-language characters, a placeholder token " +
+    "(such as DONT_USE) or a non-word left in the text; (2) a word that does not really exist in the target " +
+    "language, or a wrong word for what the source says; (3) meaning that is missing from the draft, or meaning the " +
+    "source does not have; (4) stiff written or literary wording where the source line is plain speech. " +
+    "Fix a problem with the smallest edit that solves it, keeping the draft's other words, its meaning, imagery " +
+    "and roughly its length. A draft with none of these problems must be returned exactly as it is, character for " +
+    "character. Never shorten a draft by dropping content, and never summarise or add to it. " +
     "For Korean: never end a phrase or line in a plain written declarative (~이다, ~한다, ~하다, ~했다, ~하였다, ~ㄴ다/~는다), " +
     "and never leave a verb in bare dictionary form to connect phrases - use spoken endings and connective forms " +
-    "(~고, ~서, ~며, ~아/어) instead. Choose ONE speech level for the whole song (casual 반말 or polite ~요) and use " +
-    "it consistently, but vary the specific endings. " +
+    "(~고, ~서, ~며, ~아/어) instead. Never use the polite 요-style or -ㅂ니다 style; use plain casual speech " +
+    "(반말) consistently through the song, but vary the specific endings. " +
     FIDELITY_RULE +
     MIXED_LANGUAGE_RULE +
     (ctx.length > 0 ? CONTEXT_RULE : "") +
