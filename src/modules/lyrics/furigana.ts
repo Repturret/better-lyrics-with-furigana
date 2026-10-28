@@ -188,6 +188,13 @@ const READING_OVERRIDES: ReadonlyArray<ReadingOverride> = [
   ["僕等", 0, 2, "ぼくら"],
 ];
 
+const DIGIT_PEOPLE: ReadonlyArray<readonly [string, string]> = [
+  ["1人", "ひとり"],
+  ["１人", "ひとり"],
+  ["2人", "ふたり"],
+  ["２人", "ふたり"],
+];
+
 type KuromojiToken = { surface_form: string; reading?: string };
 type Analyzer = { parse(text: string): Promise<KuromojiToken[]> };
 
@@ -676,6 +683,19 @@ export function applyOverrides(fullText: string, runs: KanjiRun[]): KanjiRun[] {
         claimed.push([runStart, runEnd]);
       }
       idx = fullText.indexOf(key, idx + key.length);
+    }
+  }
+  // 1人 / 2人 are ひとり / ふたり even right before a kanji (1人眠れない): the generic rule above skips a
+  // match a kanji touches, which let the analyzers read the digit and 人 apart (いち + にん).
+  for (const [digits, yomi] of DIGIT_PEOPLE) {
+    for (let idx = fullText.indexOf(digits); idx !== -1; idx = fullText.indexOf(digits, idx + 1)) {
+      const before = fullText[idx - 1];
+      if (before && /[0-9０-９]/.test(before)) continue;
+      const runStart = idx;
+      const runEnd = idx + digits.length;
+      if (result.some(r => r.start === runStart && r.end === runEnd && r.reading === yomi)) continue;
+      result = result.filter(r => r.end <= runStart || r.start >= runEnd);
+      result.push({ start: runStart, end: runEnd, reading: yomi });
     }
   }
   return result.sort((a, b) => a.start - b.start);

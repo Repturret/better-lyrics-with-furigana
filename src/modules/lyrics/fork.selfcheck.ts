@@ -46,6 +46,9 @@ assert.equal(readingAt(choonpu, 2), "うっとう", "ー does not eat the first 
 
 // Static overrides, including the ones that need a following kanji as context.
 const override = (text: string) => applyOverrides(text, []).map(run => `${run.start}:${run.reading}`);
+assert.deepEqual(override("1人眠れない夜だって"), ["0:ひとり", "6:よる"], "1人 before a kanji is ひとり");
+assert.deepEqual(override("１人で生きる"), ["0:ひとり"], "full-width １人 is ひとり");
+assert.deepEqual(override("2人眠る"), ["0:ふたり"], "2人 before a kanji is ふたり");
 assert.deepEqual(override("君"), ["0:きみ"], "bare 君 is きみ");
 assert.deepEqual(override("星街"), ["0:ほしまち"], "星街 is ほしまち");
 assert.deepEqual(override("朝焼け色に"), ["3:いろ"], "standalone 色 is いろ");
