@@ -81,6 +81,18 @@ const MIXED_LANGUAGE_RULE =
   "level, tone, diction and style you use for the main-language lines, so the whole song reads as one singer. ";
 
 /**
+ * Korean lyrics are written in plain speech, not 요-style. Models satisfy "no 요" by chopping the 요 off
+ * (뭔가요 -> 뭔가), which reads as a cut-off line; the rule therefore names the whole ending to use.
+ */
+const KOREAN_PLAIN_RULE =
+  "When the target language is Korean, never use the polite 요-style or formal -ㅂ니다 style (no 인가요?, " +
+  "해요, 했어요, 합니다, 입니까?), even where the source line is polite (です/ます): write plain, unceremonious " +
+  "speech (반말). But never get there by deleting the 요 and leaving the rest: 뭔가요 is NOT 뭔가, and 인가요 is NOT " +
+  "인가 - a line must never sound cut off. Replace the whole ending with a complete plain one: 뭔가요? -> 뭐야? / " +
+  "뭐니?, 인가요? -> 이야? / 인 거야?, 이에요 -> 이야, 해요 -> 해, 했어요 -> 했어, 합니다 -> 해. " +
+  "Every output line must end on a complete word and a complete ending. ";
+
+/**
  * Models translating lyrics like to "improve" them: a plain noun becomes a more poetic one, an image
  * the line never had gets added. Only the voice should be adapted to a song; what is said must not.
  */
@@ -98,9 +110,7 @@ const FIDELITY_RULE =
   "(連鎖 is 연쇄 in Korean, never something like 연사). When the source word is Sino-vocabulary (a kanji " +
   "compound) that the target language also uses as an ordinary word, carry it over as that same word, in the " +
   "target language's own pronunciation, instead of paraphrasing it or guessing a different word. " +
-  "When the target language is Korean, never use the polite 요-style or formal -ㅂ니다 style (no 인가요?, " +
-  "해요, 했어요, 합니다, 입니까?): write in plain, unceremonious lyric speech (반말 or the plain -다 style, " +
-  "such as 인가?, 해, 했어, 한다) even where the source line is polite. " +
+  KOREAN_PLAIN_RULE +
   "Only the tone is yours to adapt: make it sound " +
   "like song lyrics, with natural spoken, lyrical phrasing, without changing what is being said. ";
 
@@ -530,8 +540,10 @@ function buildRevisionPrompt(
     "character. Never shorten a draft by dropping content, and never summarise or add to it. " +
     "For Korean: never end a phrase or line in a plain written declarative (~이다, ~한다, ~하다, ~했다, ~하였다, ~ㄴ다/~는다), " +
     "and never leave a verb in bare dictionary form to connect phrases - use spoken endings and connective forms " +
-    "(~고, ~서, ~며, ~아/어) instead. Never use the polite 요-style or -ㅂ니다 style; use plain casual speech " +
-    "(반말) consistently through the song, but vary the specific endings. " +
+    "(~고, ~서, ~며, ~아/어) instead. Use plain casual speech (반말) consistently through the song, " +
+    "but vary the specific endings. " +
+    KOREAN_PLAIN_RULE +
+    "A draft that has been cut off (a missing ending, a dropped 요 that left a stub like 뭔가) must be completed. " +
     FIDELITY_RULE +
     MIXED_LANGUAGE_RULE +
     (ctx.length > 0 ? CONTEXT_RULE : "") +
